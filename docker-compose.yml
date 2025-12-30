@@ -1,0 +1,40 @@
+services:
+  base_control:
+    build: ./base_env
+    container_name: base_container
+    network_mode: host
+    privileged: true
+    environment:
+      - DISPLAY=$DISPLAY
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ./base_env/src:/root/robotArm_ws/src/user_pkgs
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    command: ["bash", "-lc", "sleep infinity"]
+
+  yolo_service:
+    build: ./yolo_service
+    container_name: yolo_container
+    network_mode: host
+    privileged: true
+    # --- 아래 두 줄 추가 ---
+    stdin_open: true 
+    tty: true
+    # ----------------------
+    environment:
+      - DISPLAY=$DISPLAY
+    volumes:
+      - ./yolo_service/src:/root/robotArm_ws/src/user_pkgs
+
+  llm_service:
+    build: ./llm_service
+    container_name: llm_container
+    network_mode: host
+    privileged: true
+    # --- 아래 두 줄 추가 ---
+    stdin_open: true 
+    tty: true
+    # ----------------------
+    volumes:
+      - ./llm_service/src:/root/robotArm_ws/src/user_pkgs
