@@ -21,3 +21,39 @@
 
 ### 3. 보안 설정 (`.gitignore`)
 * `.env` 파일을 추적 목록에서 제외하여 API Key 유출 사고 방지
+
+### 4. docker-compose.yml (llm_service 코드 추가)
+ services:
+  base_control:
+
+        .
+        .
+        .
+
+ ----- 위는 변동 사항 없음 ----- 
+  llm_service:
+    build: ./llm_service
+    container_name: llm_container
+    network_mode: host
+    privileged: true
+    stdin_open: true 
+    tty: true
+    
+    # key 원본 연결
+    env_file:
+      - .env
+
+    #[수정됨] 경로를 명확하게 고정했습니다.
+    environment:
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
+      - PULSE_COOKIE=/root/.config/pulse/cookie
+
+    volumes:
+      - ./llm_service/src:/root/robotArm_ws/src/user_pkgs
+      
+      # 1. 오디오 소켓 (기존 유지)
+      - /run/user/1000/pulse:/run/user/1000/pulse
+      # 2. 인증 쿠키 (기존 유지하되, 환경변수와 경로 일치시킴)
+      - ~/.config/pulse/cookie:/root/.config/pulse/cookie      
+      # 3. [추가됨] 머신 ID (지문 인식 - 이게 핵심!)
+      - /etc/machine-id:/etc/machine-id:ro
