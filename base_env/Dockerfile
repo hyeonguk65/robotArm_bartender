@@ -36,3 +36,5 @@ RUN if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then rosdep init
     colcon build --symlink-install && \
     rm -rf /var/lib/apt/lists/*
 
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc && \
+echo "source /root/robotArm_ws/install/setup.bash" >> /root/.bashrc

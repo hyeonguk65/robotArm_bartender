@@ -1,10 +1,10 @@
 from setuptools import find_packages, setup
 
-package_name = 'cocktail_brain'
+package_name = 'robotarm'
 
 setup(
     name=package_name,
-    version='0.0.1',
+    version='0.0.1', 
     packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
@@ -15,17 +15,12 @@ setup(
     zip_safe=True,
     maintainer='lewis',
     maintainer_email='yosijki@gmail.com',
-    description='LLM service setting',
+    description='Robot Arm Control Package for Bartender Project',
     license='Apache-2.0',
-    extras_require={
-        'test': [
-            'pytest',
-        ],
-    },
+    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            "brain_node = cocktail_brain.brain_node:main",
-            "check_models = cocktail_brain.check_models:main",
+            'run_robot = robotarm.control_robotarm:main',
         ],
     },
 )
