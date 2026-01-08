@@ -6,35 +6,83 @@ services:
     privileged: true
     environment:
       - DISPLAY=$DISPLAY
+      - ROS_DOMAIN_ID=0
+      - PYTHONUNBUFFERED=1
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      # [통신 해결] 공유 메모리 차단 및 네트워크 통신 강제
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/root/fastdds_shm_disable.xml
+      - ROS_LOCALHOST_ONLY=0
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ./base_env/src:/root/robotArm_ws/src/user_pkgs
+      # [통신 해결] 설정 파일 공유
+      - ./fastdds_shm_disable.xml:/root/fastdds_shm_disable.xml
+      # [에뮬레이터 해결] 컨테이너 내부에서 가상 로봇 도커를 띄우기 위한 소켓 공유
+      - /var/run/docker.sock:/var/run/docker.sock
     devices:
       - /dev/bus/usb:/dev/bus/usb
     command: ["bash", "-lc", "sleep infinity"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   yolo_service:
     build: ./yolo_service
     container_name: yolo_container
     network_mode: host
     privileged: true
-    # --- 아래 두 줄 추가 ---
     stdin_open: true 
     tty: true
-    # ----------------------
     environment:
       - DISPLAY=$DISPLAY
+      - ROS_DOMAIN_ID=0
+      - PYTHONUNBUFFERED=1
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      # [통신 해결]
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/root/fastdds_shm_disable.xml
+      - ROS_LOCALHOST_ONLY=0
     volumes:
       - ./yolo_service/src:/root/robotArm_ws/src/user_pkgs
+      - /dev:/dev
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      # [통신 해결]
+      - ./fastdds_shm_disable.xml:/root/fastdds_shm_disable.xml
+    devices:
+      - "/dev/bus/usb:/dev/bus/usb"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   llm_service:
     build: ./llm_service
     container_name: llm_container
     network_mode: host
     privileged: true
-    # --- 아래 두 줄 추가 ---
     stdin_open: true 
     tty: true
-    # ----------------------
+    environment:
+      - ROS_DOMAIN_ID=0
+      - PYTHONUNBUFFERED=1
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      # [통신 해결]
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/root/fastdds_shm_disable.xml
+      - ROS_LOCALHOST_ONLY=0
     volumes:
       - ./llm_service/src:/root/robotArm_ws/src/user_pkgs
+      # [통신 해결]
+      - ./fastdds_shm_disable.xml:/root/fastdds_shm_disable.xml
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
