@@ -50,6 +50,13 @@ class DoosanPickAndPlace(Node):
         self.tol = 10.0 
         self.v_fast, self.a_fast = 50, 60
         self.v_slow, self.a_slow = 30, 30
+<<<<<<< Updated upstream
+=======
+        self.grip_fail_count = 0
+        self.grip_max_fail = 3
+        self.last_grip_attempt = 0.0
+        self.grip_retry_delay = 0.5
+>>>>>>> Stashed changes
 
         self.sub_coord = self.create_subscription(PointStamped, "/hand_target_point", self.target_cb, 10)
         self.pub_resume = self.create_publisher(String, "/llm_command", 10)
@@ -98,6 +105,11 @@ class DoosanPickAndPlace(Node):
         self.goal = None
         self.state = self.IDLE
         self.sent = False
+<<<<<<< Updated upstream
+=======
+        self.grip_fail_count = 0
+        self.last_grip_attempt = 0.0
+>>>>>>> Stashed changes
         self.get_logger().info("System Reset. Waiting for NEW target.")
 
     def step_loop(self):
@@ -119,6 +131,7 @@ class DoosanPickAndPlace(Node):
 
         # 2. 그리퍼 벌리기
         elif self.state == self.GRIP_OPEN:
+<<<<<<< Updated upstream
             if not self.sent:
                 self.get_logger().info("STEP GRIP_OPEN")
                 # DRL 내부: open -> wait(0.5) -> write -> wait(1.5) -> close
@@ -130,6 +143,26 @@ class DoosanPickAndPlace(Node):
                 self.sent = True
                 self.state = self.MOVE_DOWN
                 self.sent = False
+=======
+            if time.time() - self.last_grip_attempt < self.grip_retry_delay:
+                return
+            self.last_grip_attempt = time.time()
+            self.get_logger().info("STEP GRIP_OPEN")
+            # DRL 내부: open -> wait(0.5) -> write -> wait(1.5) -> close
+            ok = self.gripper.move(GRIPPER_OPEN_VAL)
+            self.get_logger().info(f"GRIP_OPEN request sent: {ok}")
+            if not ok:
+                self.grip_fail_count += 1
+                self.get_logger().warn(f"GRIP_OPEN failed ({self.grip_fail_count}/{self.grip_max_fail})")
+                if self.grip_fail_count >= self.grip_max_fail:
+                    self.get_logger().error("GRIP_OPEN failed too many times. Resetting.")
+                    self.reset()
+                return
+            self.grip_fail_count = 0
+            time.sleep(2.5) # Python 대기
+            self.state = self.MOVE_DOWN
+            self.sent = False
+>>>>>>> Stashed changes
 
         # 3. 내려가기
         elif self.state == self.MOVE_DOWN:
@@ -144,6 +177,7 @@ class DoosanPickAndPlace(Node):
 
         # 4. 그리퍼 닫기
         elif self.state == self.GRIP_CLOSE:
+<<<<<<< Updated upstream
             if not self.sent:
                 self.get_logger().info("STEP GRIP_CLOSE")
                 # DRL 내부: open -> wait(0.5) -> write -> wait(1.5) -> close
@@ -154,6 +188,26 @@ class DoosanPickAndPlace(Node):
 
                 self.state = self.MOVE_UP
                 self.sent = False
+=======
+            if time.time() - self.last_grip_attempt < self.grip_retry_delay:
+                return
+            self.last_grip_attempt = time.time()
+            self.get_logger().info("STEP GRIP_CLOSE")
+            # DRL 내부: open -> wait(0.5) -> write -> wait(1.5) -> close
+            ok = self.gripper.move(GRIPPER_CLOSE_VAL)
+            self.get_logger().info(f"GRIP_CLOSE request sent: {ok}")
+            if not ok:
+                self.grip_fail_count += 1
+                self.get_logger().warn(f"GRIP_CLOSE failed ({self.grip_fail_count}/{self.grip_max_fail})")
+                if self.grip_fail_count >= self.grip_max_fail:
+                    self.get_logger().error("GRIP_CLOSE failed too many times. Resetting.")
+                    self.reset()
+                return
+            self.grip_fail_count = 0
+            time.sleep(2.5) # Python 대기
+            self.state = self.MOVE_UP
+            self.sent = False
+>>>>>>> Stashed changes
 
         # 5. 들어올리기
         elif self.state == self.MOVE_UP:
@@ -217,4 +271,8 @@ def main(args=None):
         rclpy.shutdown()
 
 if __name__ == "__main__":
+<<<<<<< Updated upstream
     main()
+=======
+    main()
+>>>>>>> Stashed changes

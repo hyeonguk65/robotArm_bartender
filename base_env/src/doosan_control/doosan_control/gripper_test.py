@@ -20,7 +20,11 @@ def main(args=None):
 
     gripper = None
     try:
+<<<<<<< Updated upstream
         gripper = GripperController(node=node, namespace=ROBOT_ID)
+=======
+        gripper = GripperController(node=node, dsr_node=node, namespace=ROBOT_ID)
+>>>>>>> Stashed changes
         if not gripper.initialize():
             node.get_logger().error("Gripper initialization failed. Exiting.")
             return
