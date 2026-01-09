@@ -1,16 +1,17 @@
-import rclpy
-import DR_init
-import time
+import json
 import textwrap
+import time
+
+import DR_init
+import rclpy
 from dsr_msgs2.srv import DrlStart
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.node import Node
+from std_msgs.msg import String
 
-
-# DRL GRIPPER BASE SCRIPT (WORKING VERSION)
-# - includes init loop + recv_check
 DRL_GRIPPER_BASE = """
 g_slaveid = 0
-flag = 0
-
 def modbus_set_slaveid(slaveid):
     global g_slaveid
     g_slaveid = slaveid
@@ -34,239 +35,198 @@ def modbus_fc16(startaddress, cnt, valuelist):
         data += (valuelist[i]).to_bytes(2, 'big')
     return modbus_send_make(data)
 
-def recv_check():
-    size, val = flange_serial_read(0.1)
-    return size > 0, val
-
 def gripper_move(stroke):
-    # move command (assumes serial already opened + gripper initialized)
-    flange_serial_write(modbus_fc16(282, 2, [stroke, 0]))
-    wait(1.0)
-
-# --- init loop: keep trying until gripper responds ---
-while True:
     flange_serial_open(
         baudrate=57600,
         bytesize=DR_EIGHTBITS,
         parity=DR_PARITY_NONE,
-        stopbits=DR_STOPBITS_ONE,
+        stopbits=DR_STOPBITS_ONE
     )
     modbus_set_slaveid(1)
-
-    # enable / init
     flange_serial_write(modbus_fc06(256, 1))
-    flag, _ = recv_check()
-
-    # param set (example: speed/force etc. depending on device)
+    wait(0.1)
     flange_serial_write(modbus_fc06(275, 400))
-    flag, _ = recv_check()
-
-    if flag:
-        break
-
+    wait(0.1)
+    flange_serial_write(modbus_fc16(282, 2, [stroke, 0]))
+    wait(1.5)
     flange_serial_close()
 """
 
 
-def main(args=None):
-    rclpy.init(args=args)
+class RobotBartender(Node):
+    def __init__(self):
+        super().__init__("robot_bartender_node", namespace="dsr01")
+        self.callback_group = ReentrantCallbackGroup()
 
-    # Robot basic setup
-    ROBOT_ID = "dsr01"
-    ROBOT_MODEL = "e0509"
-
-    DR_init.__dsr__id = ROBOT_ID
-    DR_init.__dsr__model = ROBOT_MODEL
-
-    node = rclpy.create_node("robot_executor", namespace=ROBOT_ID)
-    DR_init.__dsr__node = node
-
-    from DSR_ROBOT2 import (
-        movej,
-        move_periodic,
-        posj,
-        set_robot_mode,
-        ROBOT_MODE_AUTONOMOUS,
-    )
-
-    set_robot_mode(ROBOT_MODE_AUTONOMOUS)
-
-    # 속도 설정
-    VEL = 15
-    ACC = 15
-
-    def pause(t):
-        time.sleep(t)
-
-    # DRL client (create once)
-    cli = node.create_client(DrlStart, f"/{ROBOT_ID}/drl/drl_start")
-    while not cli.wait_for_service(timeout_sec=1.0):
-        print("⏳ Waiting for DRL service...")
-
-    # Gripper control function (robust)
-    # - sends full DRL script (init + move)
-    # - waits for service response
-    def gripper_move(stroke: int, settle: float = 0.3):
-        code = textwrap.dedent(
-            DRL_GRIPPER_BASE + f"\n\ngripper_move({int(stroke)})\n"
+        self.subscription = self.create_subscription(
+            String,
+            "/robot_order",
+            self.order_callback,
+            10,
+            callback_group=self.callback_group,
         )
+
+        self.status_publisher = self.create_publisher(String, "/robot_status", 10)
+
+        self.drl_client = self.create_client(
+            DrlStart,
+            "drl/drl_start",
+            callback_group=self.callback_group,
+        )
+
+        # 로봇 제어 함수들 (나중에 연결됨)
+        self.movej = None
+        self.posj = None
+        self.set_robot_mode = None
+        self.robot_mode_autonomous = None
+
+        self.robot_ready = False
+        self.is_busy = False
+
+        # 나중에 티칭해서 값만 바꾸면 됩니다.
+        self.LOCATIONS = {
+            "HOME": [0, 0, 90, 0, 90, 0],
+            "ICE_MACHINE": [-18, 43.5, 65, 0, 71.5, -18],  # 얼음 위치
+            # [숙제] 아래 좌표들은 실제 로봇을 움직여서 값을 알아내고 채워넣어야 합니다!
+            "GIN_BOTTLE": [10, 10, 90, 0, 90, 0],  # (예시) 진 병 위치
+            "WHISKEY_BOTTLE": [20, 20, 90, 0, 90, 0],  # (예시) 잭다니엘 병 위치
+            "TONIC_DISPENSER": [30, 30, 90, 0, 90, 0],  # (예시) 토닉워터
+            "COKE_DISPENSER": [40, 40, 90, 0, 90, 0],  # (예시) 콜라
+            "SERVING_POINT": [0, -40, 90, 0, 90, 0],  # 손님에게 주는 위치
+        }
+
+        # [핵심 2] 레시피 북 (RECIPE_BOOK)
+        # 칵테일 이름 : [이동할 위치 순서 목록]
+        self.RECIPE_BOOK = {
+            "Gin Tonic": [
+                "ICE_MACHINE",
+                "GIN_BOTTLE",
+                "TONIC_DISPENSER",
+                "SERVING_POINT",
+            ],
+            "Jack & Coke": [
+                "ICE_MACHINE",
+                "WHISKEY_BOTTLE",
+                "COKE_DISPENSER",
+                "SERVING_POINT",
+            ],
+        }
+
+        self.get_logger().info("🦾 로봇 바텐더 준비 완료 (레시피 북 탑재)")
+
+    def order_callback(self, msg):
+        if self.is_busy:
+            return
+
+        try:
+            clean_json = msg.data.replace("```json", "").replace("```", "").strip()
+            order_data = json.loads(clean_json)
+            cocktail_name = order_data.get("cocktail", "")
+
+            # 메뉴판에 없는 주문 방어
+            if cocktail_name not in self.RECIPE_BOOK:
+                self.get_logger().warning(f"🚫 레시피 없는 주문: {cocktail_name}")
+                return
+
+            self.get_logger().info(f"🍹 주문 접수: {cocktail_name}")
+
+            # 로봇 연결 체크
+            if not self.robot_ready:
+                if self.set_robot_mode:
+                    self.set_robot_mode(self.robot_mode_autonomous)
+                    self.robot_ready = True
+                else:
+                    return
+
+            self.is_busy = True
+            self.make_cocktail(cocktail_name)  # 만능 함수 호출
+            self.is_busy = False
+
+            # 완료 신호 전송
+            done_msg = String()
+            done_msg.data = "DONE"
+            self.status_publisher.publish(done_msg)
+
+        except Exception as e:
+            self.get_logger().error(f"주문 처리 중 에러: {e}")
+            self.is_busy = False
+
+    def gripper_move(self, stroke, settle=2.0):
+        """그리퍼 제어 (비동기)."""
+        code = textwrap.dedent(DRL_GRIPPER_BASE + f"\n\ngripper_move({int(stroke)})\n")
         req = DrlStart.Request()
         req.robot_system = 0
         req.code = code
-
-        future = cli.call_async(req)
-        rclpy.spin_until_future_complete(node, future, timeout_sec=5.0)
-
-        if future.result() is None:
-            print("❌ DRL gripper call failed: no response")
-        else:
-            if not future.result().success:
-                print("❌ DRL gripper call returned success=False")
-            else:
-                print(f"✅ Gripper command sent: stroke={stroke}")
-
+        self.drl_client.call_async(req)
         time.sleep(settle)
 
-    # Gin Tonic Sequence
-    P0 = posj(0, 0, 90, 0, 90, 0)
+    def make_cocktail(self, menu_name):
+        """레시피 북을 보고 순서대로 움직이는 만능 함수."""
+        if self.posj is None:
+            return
 
-    print("🏠 Home")
-    gripper_move(0, settle=0.5)
-    pause(1.0)
-    movej(P0, VEL, ACC)
-    pause(1.0)
+        # 1. 레시피 가져오기 (예: ["ICE", "GIN", ...])
+        recipe_steps = self.RECIPE_BOOK[menu_name]
+        self.get_logger().info(f"🎬 {menu_name} 제조 시작! 단계: {recipe_steps}")
 
-    # 얼음컵 만들기 코드는 삭제 후 vision제어로 변경
-    print("🧊 얼음컵 만들기")
-    movej([-18, 43.5, 65, 0, 71.5, -18], VEL, ACC)
-    pause(1.0)  # 얼음 위치로 이동
+        VEL = 30
+        ACC = 30
 
-    movej([-26, 9, 92, 0, 79, -26], VEL, ACC)
-    pause(1.0)  # 얼음->컵 경유 지점
+        # 2. 초기화 (홈 이동 & 그리퍼 열기)
+        self.movej(self.posj(*self.LOCATIONS["HOME"]), VEL, ACC)
+        self.gripper_move(0)
 
-    movej([-32, -2.5, 117, 0, 66, -32], VEL, ACC)
-    pause(1.0)  # 얼음 투입
+        # 3. 레시피 순서대로 착착 이동
+        for step_name in recipe_steps:
+            # 좌표 사전에서 좌표 꺼내기
+            target_coords = self.LOCATIONS.get(step_name)
 
-    # 하부 gripper 제작 후 정확한 좌표 다시 지정해야함.
-    print("🥃 shaker로 이동")
-    movej([1.5, -14, 115.5, 0, 78.5, 1.5], VEL, ACC)
-    pause(1.0)  # 얼음컵->shaker 경유 지점1
+            if target_coords:
+                self.get_logger().info(f"➡️ 이동 중: {step_name}")
 
-    movej([70, -11, 113, 0, 78, 70], VEL, ACC)
-    pause(1.0)  # 얼음컵->shaker 경유 지점2
+                # 로봇 이동
+                self.movej(self.posj(*target_coords), VEL, ACC)
+                time.sleep(0.5)  # 이동 후 잠시 안정화
 
-    movej([88, 23.5, 75, 0, 81.5, 88], VEL, ACC)
-    pause(1.0)  # 얼음컵->shaker 경유 지점3
+                # [응용] 만약 특정 위치에서 특별한 행동(따르기 등)이 필요하면
+                # 여기에 if step_name == "GIN_BOTTLE": self.pour_drink() 등을 추가
+                time.sleep(2.0)  # (임시) 작업 시간 시뮬레이션
+            else:
+                self.get_logger().error(f"❌ 좌표 없음: {step_name}")
 
-    movej([90, 50, 116, -70.5, 94.5, 77], VEL, ACC)
-    pause(2.0)  # shaker_body 위치
+        # 4. 마무리 (홈 복귀)
+        self.get_logger().info("🏠 홈으로 복귀")
+        self.movej(self.posj(*self.LOCATIONS["HOME"]), VEL, ACC)
+        self.get_logger().info(f"✨ {menu_name} 완성!")
 
-    print("🤏 shaker body 잡기")
-    gripper_move(260, settle=0.5)
-    # shaker_body 잡기 (확실하게 grab하기 위해 pause_timer 넉넉하게 설정)
-    pause(3.0)
 
-    movej([90, 40, 118.5, -71.5, 97, 70.5], VEL, ACC)
-    pause(1.0)  # shaker 들기
+def main(args=None):
+    rclpy.init(args=args)
+    node = RobotBartender()
 
-    print("🥤 디스펜서 위치로 이동")
-    movej([7, 53, 113, -171, 76.5, 88], VEL, ACC)
-    pause(1.0)  # 음료1번 앞 위치 ex)콜라 앞.
+    DR_init.__dsr__id = ""
+    DR_init.__dsr__model = "e0509"
+    DR_init.__dsr__node = node
 
-    movej([5, 63, 82.5, -172, 55.5, 85.5], VEL, ACC)
-    pause(2.0)  # 디스펜서 push로 음료 추출 (pause_timer 조정할 것)
+    try:
+        import DSR_ROBOT2 as dr
 
-    movej([7, 53, 113, -171, 76.5, 88], VEL, ACC)
-    pause(1.0)  # 음료 추출 완료
+        # 함수 연결
+        node.movej = dr.movej
+        node.posj = dr.posj
+        node.set_robot_mode = dr.set_robot_mode
+        node.robot_mode_autonomous = dr.ROBOT_MODE_AUTONOMOUS
 
-    movej([90, 50, 116, -70.5, 94.5, 77], VEL, ACC)
-    # shaker_home 위치로 이동(이후 하부 gripper가 shaker 잡아야함)
-    pause(1.0)
+        # 멀티스레드 (4개)
+        executor = MultiThreadedExecutor(num_threads=4)
+        executor.add_node(node)
+        executor.spin()
 
-    print("🧢 뚜껑 닫기")
-    gripper_move(0, settle=0.3)
-    pause(1.0)
-
-    movej([90, 21, 118.5, -74.5, 102.5, 51], VEL, ACC)
-    pause(1.0)  # shaker_home->뚜껑 경유 지점
-
-    movej([129.5, 64, 92.5, -33, 110, 77.5], VEL, ACC)
-    pause(1.0)  # 뚜껑_home 위치
-    gripper_move(260, settle=0.3)
-    pause(2.0)  # 뚜껑 잡기
-
-    movej([117.5, 21.5, 112, -60.5, 117.5, 52.5], VEL, ACC)
-    pause(1.0)  # 뚜껑->shaker 경유 지점
-
-    movej([93, 26, 118.5, -71, 103, 57], VEL, ACC)
-    pause(1.0)  # 뚜껑 : shaker 위에 위치
-
-    movej([93, 37.5, 118, -69, 99, 67.5], VEL, ACC)
-    pause(2.0)  # 뚜껑 닫기
-    gripper_move(0, settle=0.3)
-    pause(1.0)  # 뚜껑 닫은 후 gripper release
-
-    movej([90, 50, 116, -70.5, 94.5, 77], VEL, ACC)
-    pause(1.0)  # shaker에 결합되어 있는 뚜껑 위치
-    gripper_move(260, settle=0.3)
-    pause(2.0)  # 뚜껑 grab
-
-    print("🍸 Shaking")
-    movej([0, 0, 90, -30, 90, 0], VEL, ACC)
-    pause(1.0)  # shaking 동작을 위한 위치
-
-    # 안전: 흔들기 전에 한 번 더 잡기
-    gripper_move(260, settle=0.3)
-    pause(1.0)
-
-    move_periodic(
-        [30, 30, 30, 10, 0, 10],
-        [3, 3, 3, 3, 3, 3],
-        3,
-        6
-    )
-    pause(1.0)  # shaking
-
-    print("🧢 뚜껑 열기")
-    movej([90, 50, 116, -70.5, 94.5, 77], VEL, ACC)
-    pause(1.0)  # shaker_home 위치
-    gripper_move(0, settle=0.3)
-    pause(2.0)
-
-    movej([93, 37.5, 118, -69, 99, 67.5], VEL, ACC)
-    pause(1.0)  # shaker 결합되어 있는 뚜껑 위치
-    gripper_move(260, settle=0.3)
-    pause(2.0)  # 뚜껑 잡기
-
-    movej([93, 21.5, 117.5, -72, 104.5, 52], VEL, ACC)
-    pause(1.0)  # 뚜껑 해제
-
-    print("🧢 뚜껑 제자리에 놓기")
-    movej([129.5, 64, 92.5, -33, 110, 77.5], VEL, ACC)
-    pause(1.0)  # 뚜껑_home 위치
-    gripper_move(0, settle=0.3)
-    pause(2.0)  # 뚜껑 내려놓기
-
-    movej([117.5, 21.5, 112, -60.5, 117.5, 52.5], VEL, ACC)
-    pause(1.0)  # 뚜껑->shaker 경유 지점
-
-    movej([90, 50, 116, -70.5, 94.5, 77], VEL, ACC)
-    pause(2.0)  # shaker_body 위치
-
-    print("🤏 shaker body 잡기")
-    gripper_move(260, settle=0.5)
-    # shaker_body 잡기 (확실하게 grab하기 위해 pause_timer 넉넉하게 설정)
-    pause(3.0)
-
-    # 컵 위로 이동 후 기울여서 따라야함.
-    print("🏁 Done")
-    movej(P0, VEL, ACC)
-    pause(1.0)
-    gripper_move(0, settle=0.3)
-    pause(1.0)
-
-    node.destroy_node()
-    rclpy.shutdown()
+    except Exception as e:
+        node.get_logger().error(f"치명적 오류: {e}")
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":

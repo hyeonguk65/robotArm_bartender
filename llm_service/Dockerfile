@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y \
 # - gTTS: 말하기 (TTS)
 # - sounddevice, pyaudio: 마이크/스피커 제어
 RUN pip3 install \
-    google-generativeai \
+    "google-generativeai>=0.8.3" \
     openai-whisper \
     gTTS \
     SpeechRecognition \
@@ -37,17 +37,17 @@ RUN pip3 install \
     setuptools==58.2.0
 
 # 4. 워크스페이스 설정 
-WORKDIR /ros2_ws
+WORKDIR /root/robotArm_ws
 
 # 5. 소스 코드 복사 
-COPY src/ src/
+# COPY src/ src/
 
 # 6. 빌드 
 RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"
 
 # 7. 환경 설정 자동화
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
-RUN echo "source /ros2_ws/install/setup.bash" >> ~/.bashrc
+RUN echo "source /robotArm_ws/install/setup.bash" >> ~/.bashrc
 
 # [오디오 설정] 파이썬이 호스트의 PulseAudio를 사용하도록 강제
 RUN echo 'pcm.!default { type pulse hint.description "Default Audio Device" } ctl.!default { type pulse }' > /etc/asound.conf

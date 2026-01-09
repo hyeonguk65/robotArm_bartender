@@ -4,8 +4,11 @@ services:
     container_name: base_container
     network_mode: host
     privileged: true
+    # [추가] ROS2 통신 성능 향상 (대용량 데이터/이미지 전송 시 유리)
+    ipc: host
     environment:
       - DISPLAY=$DISPLAY
+      - ROS_DOMAIN_ID=77
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ./base_env/src:/root/robotArm_ws/src/user_pkgs
@@ -18,12 +21,15 @@ services:
     container_name: yolo_container
     network_mode: host
     privileged: true
+    # [추가] ROS2 통신 성능 향상 (대용량 데이터/이미지 전송 시 유리)
+    ipc: host
     # --- 아래 두 줄 추가 ---
     stdin_open: true 
     tty: true
     # ----------------------
     environment:
       - DISPLAY=$DISPLAY
+      - ROS_DOMAIN_ID=77
     volumes:
       - ./yolo_service/src:/root/robotArm_ws/src/user_pkgs
 
@@ -32,6 +38,8 @@ services:
     container_name: llm_container
     network_mode: host
     privileged: true
+    # [추가] ROS2 통신 성능 향상 (대용량 데이터/이미지 전송 시 유리)
+    ipc: host
     stdin_open: true 
     tty: true
     
@@ -43,6 +51,10 @@ services:
     environment:
       - PULSE_SERVER=unix:/run/user/1000/pulse/native
       - PULSE_COOKIE=/root/.config/pulse/cookie
+      - ROS_DOMAIN_ID=77
+      # 아래는 한글 출력을 위한 인코딩 설정 (LLM이 한글 뱉을 때 깨짐 방지)
+      - PYTHONIOENCODING=utf-8
+      - LANG=C.UTF-8
 
     volumes:
       - ./llm_service/src:/root/robotArm_ws/src/user_pkgs

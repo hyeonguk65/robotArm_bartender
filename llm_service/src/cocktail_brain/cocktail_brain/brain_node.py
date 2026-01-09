@@ -5,32 +5,36 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 
-# stt.py, tts.py, gemini_handler.py 가져오기
+# 패키지 임포트 예외처리
 try:
     from . import gemini_handler
     from . import stt
     from . import tts
 except ImportError:
-    # ROS2 패키지 구조가 아닌 일반 실행일 경우를 대비한 예외처리
     import gemini_handler
     import stt
     import tts
 
-# 바텐더 로봇의 행동 지침 (프롬프트)
+
 BARTENDER_PROMPT = """
 [SYSTEM INSTRUCTION]
-당신은 로봇 바텐더입니다. 손님의 말을 듣고 상황에 맞는 칵테일을 추천해주세요.
-반드시 아래의 JSON 형식으로만 답변해야 하며,
-다른 사족(마크다운, 인사말 등)은 절대 붙이지 마세요.
+당신은 로봇 바텐더입니다. 손님의 말을 듣고 JSON으로만 응답하세요.
 
-가능한 칵테일: [Gin Tonic, Martini, Whiskey Sour, Orange Juice, Jack & Coke]
+[행동 지침]
+1. **주문 접수**: 손님이 칵테일 이름을 말하거나,
+   **발음이 비슷하면(예: '김토니' -> 'Gin Tonic', '잭코' -> 'Jack & Coke')**
+   절대 되묻지 말고 **즉시 주문으로 확정**하세요.
+   -> `action_code`="make_cocktail", `cocktail`="정확한 영어 메뉴명"
+2. **일상 대화**: 주문이 아니라면 친절하게 대답하세요.
+   -> `action_code`="chat", `cocktail`=null
 
-출력 형식 예시:
-{
-  "reason": "힘든 하루를 보내신 것 같아 상큼한 진토닉을 추천해 드립니다.",
-  "cocktail": "Gin Tonic",
-  "action_code": "make_gin_tonic"
-}
+가능한 칵테일: [Gin Tonic, Jack & Coke]
+
+[출력 예시]
+{"reason": "네, 시원한 진토닉 바로 만들어 드리겠습니다.",
+ "cocktail": "Gin Tonic", "action_code": "make_cocktail"}
+{"reason": "안녕하세요! 오늘 기분은 어떠신가요?",
+ "cocktail": null, "action_code": "chat"}
 """
 
 
@@ -38,78 +42,98 @@ class CocktailBrain(Node):
     def __init__(self):
         super().__init__("cocktail_brain_node")
 
-        # 1. 퍼블리셔 (척수): 로봇 팔에게 명령 전달
-        self.publisher_ = self.create_publisher(String, "robot_order", 10)
+        # 1. 로봇 팔 명령 (입)
+        self.publisher_ = self.create_publisher(String, "/robot_order", 10)
 
-        self.get_logger().info("🍸 칵테일 바텐더 뇌(Brain)가 깨어났습니다!")
+        # 2. 로봇 상태 수신 (귀)
+        self.status_sub = self.create_subscription(
+            String, "/robot_status", self.robot_status_callback, 10
+        )
 
-        # 2. 주기적 실행 (타이머)
-        # STT와 TTS가 시간을 잡아먹으므로 타이머 주기는 좀 넉넉하게 잡거나,
-        # 루프가 끝나면 다시 호출되는 방식을 고려해야 하지만,
-        # 일단 1.0초로 설정하고 내부 로직이 끝날 때까지
-        # 블로킹(대기)되는 구조로 갑니다.
+        self.get_logger().info("🍸 칵테일 바텐더 뇌(Brain) 가동 - 빠른 응답 모드")
+
+        # [상태 변수]
+        # 로봇이 제조 중인가?
+        self.waiting_for_robot = False
+
         self.timer = self.create_timer(1.0, self.listen_and_think)
 
-    def listen_and_think(self):
-        # --- [Step 1] 듣기 (STT) ---
-        # stt.py의 speech_to_text 함수 사용 (기본 5초 듣기)
-        # 로그 너무 많으면 지저분하니 생략 가능
-        # self.get_logger().info("👂 듣는 중...")
+    def robot_status_callback(self, msg):
+        """로봇이 'DONE' 신호를 보내면 실행."""
+        if msg.data == "DONE":
+            self.get_logger().info("🤖 로봇: 제조 완료")
+            tts.speak(
+                "칵테일이 완성되었습니다. 맛있게 드세요. " "다음 주문 말씀해주세요."
+            )
+            self.waiting_for_robot = False
 
+    def listen_and_think(self):
+        # 1. 로봇이 일하는 중이면 듣지 않음
+        if self.waiting_for_robot:
+            return
+
+        # --- [Step 1] 듣기 ---
         user_text = stt.speech_to_text(duration=5)
 
-        # 말이 없거나 너무 작으면 패스
-        if not user_text:
+        # 잡음 처리 (너무 짧으면 무시)
+        if not user_text or len(user_text.strip()) < 2:
             return
 
         self.get_logger().info(f'🙋 손님: "{user_text}"')
 
-        # --- [Step 2] 생각하기 (Gemini) ---
-        # gemini_handler는 "친절한 비서" 설정이므로,
-        # 질문 앞에 "바텐더 프롬프트"를 붙여서 보냅니다.
-        full_query = f"{BARTENDER_PROMPT}\n손님: {user_text}"
+        # --- [Step 2] 생각하기 (Context 주입 로직 삭제됨) ---
+        full_query = f"{BARTENDER_PROMPT}\n손님: {user_text}"  # noqa: E501
 
+        # 제미나이에게 질문
         ai_response = gemini_handler.ask_gemini(full_query)
-
-        # JSON 포맷팅 정리 (가끔 ```json ... ``` 이렇게 줄 때가 있음)
         clean_json = ai_response.replace("```json", "").replace("```", "").strip()
+        self.get_logger().info(f"🤖 생각: {clean_json}")
 
-        self.get_logger().info(f"🤖 제미나이 생각: {clean_json}")
-
-        # --- [Step 3] 말하기 (TTS) & 명령 내리기 ---
+        # --- [Step 3] 행동 결정 ---
         try:
-            # 문자열을 진짜 JSON 객체로 변환
-            order_data = json.loads(clean_json)
+            data = json.loads(clean_json)
+            reason = data.get("reason", "")
+            cocktail = data.get("cocktail", "")
+            action = data.get("action_code", "unknown")
 
-            reason = order_data.get("reason", "알겠습니다.")
-            cocktail = order_data.get("cocktail", "Water")
-
-            # 1. 손님에게 말해주기 (TTS)
-            self.get_logger().info(f'🗣️ 로봇: "{reason}"')
-            # 여기서 로봇이 말을 합니다!
+            # 1. 안내 멘트 (TTS)
+            self.get_logger().info(f'🗣️ 로봇 말: "{reason}"')
             tts.speak(reason)
 
-            # 2. 로봇 팔에게 명령 보내기 (Publish)
-            msg = String()
-            msg.data = clean_json
-            self.publisher_.publish(msg)
-            self.get_logger().info(f">> 🦾 명령 전송 완료: {cocktail}")
+            # 2. 행동 처리
+            if action == "make_cocktail":
+                # 되묻기 없이 바로 로봇에게 명령 전송
+                self.send_order_to_robot(cocktail)
+            else:
+                # chat 또는 에러 상황 등 -> 아무 행동 안 함 (TTS만 하고 끝)
+                pass
 
-        except json.JSONDecodeError:
-            self.get_logger().error("Gemini가 JSON이 아닌 이상한 말을 했습니다.")
-            tts.speak("죄송해요, 제가 잠시 딴생각을 했네요. " "다시 말씀해 주시겠어요?")
         except Exception as e:
-            self.get_logger().error(f"처리 중 에러 발생: {e}")
+            self.get_logger().error(f"처리 오류: {e}")
+            tts.speak("죄송해요, 오류가 났어요.")
+
+    def send_order_to_robot(self, cocktail_name):
+        """로봇에게 최종 명령 전송."""
+        if not cocktail_name:
+            return
+
+        msg = String()
+        # 로봇이 이해하기 쉬운 단순 JSON으로 변환
+        msg.data = json.dumps({"cocktail": cocktail_name})
+        self.publisher_.publish(msg)
+
+        self.get_logger().info(f">> 🦾 로봇에게 확정 명령 전송: {cocktail_name}")
+        # 로봇 대기 모드 진입
+        self.waiting_for_robot = True
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = CocktailBrain()
-
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("종료 요청 받음")
+        pass
     finally:
         node.destroy_node()
         rclpy.shutdown()
