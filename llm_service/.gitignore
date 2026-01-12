@@ -1,0 +1,8 @@
+build/
+install/
+log/
+.env          <-- ★★★ 가장 중요 (키 파일 숨김)
+__pycache__/
+*.pyc
+# llm_service 폴더의 gitignore에 venv 무시 설정 추가
+echo "venv/" >> llm_service/.gitignore
