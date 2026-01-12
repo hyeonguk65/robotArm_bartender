@@ -68,6 +68,8 @@ services:
     privileged: true
     stdin_open: true 
     tty: true
+    env_file:
+      - .env
     environment:
       - ROS_DOMAIN_ID=0
       - PYTHONUNBUFFERED=1
@@ -75,10 +77,15 @@ services:
       # [통신 해결]
       - FASTRTPS_DEFAULT_PROFILES_FILE=/root/fastdds_shm_disable.xml
       - ROS_LOCALHOST_ONLY=0
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
+      - PULSE_COOKIE=/root/.config/pulse/cookie
     volumes:
       - ./llm_service/src:/root/robotArm_ws/src/user_pkgs
       # [통신 해결]
       - ./fastdds_shm_disable.xml:/root/fastdds_shm_disable.xml
+      - /run/user/1000/pulse:/run/user/1000/pulse
+      - ~/.config/pulse/cookie:/root/.config/pulse/cookie
+      - /etc/machine-id:/etc/machine-id:ro
     deploy:
       resources:
         reservations:
