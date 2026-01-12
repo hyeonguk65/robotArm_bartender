@@ -10,6 +10,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo "deb [signed-by=/etc/apt/keyrings/librealsense.pgp] https://librealsense.intel.com/Debian/apt-repo $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/librealsense.list \
     && rm -rf /var/lib/apt/lists/*
 
+# Node.js 20 및 Codex CLI 설치
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get update && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g @openai/codex \
+    && rm -rf /var/lib/apt/lists/*
+
 # 3. RealSense SDK 및 ROS 2 패키지 설치
 RUN apt-get update && apt-get install -y --no-install-recommends \
     librealsense2-utils librealsense2-dev ros-humble-realsense2-* \

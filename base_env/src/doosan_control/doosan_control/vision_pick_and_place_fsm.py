@@ -50,13 +50,14 @@ class DoosanPickAndPlace(Node):
         self.tol = 10.0 
         self.v_fast, self.a_fast = 50, 60
         self.v_slow, self.a_slow = 30, 30
-<<<<<<< Updated upstream
-=======
         self.grip_fail_count = 0
         self.grip_max_fail = 3
         self.last_grip_attempt = 0.0
         self.grip_retry_delay = 0.5
->>>>>>> Stashed changes
+        self.last_tcp = None
+        self.still_count = 0
+        self.still_eps = 1.0
+        self.still_need = 25
 
         self.sub_coord = self.create_subscription(PointStamped, "/hand_target_point", self.target_cb, 10)
         self.pub_resume = self.create_publisher(String, "/llm_command", 10)
@@ -85,6 +86,8 @@ class DoosanPickAndPlace(Node):
         self.goal = (x,y,z)
         self.state = self.MOVE_ABOVE
         self.sent = False
+        self.last_tcp = None
+        self.still_count = 0
         self.get_logger().info(f"🎯 goal set: ({x:.1f}, {y:.1f}, {z:.1f})")
 
     def tcp_xyz(self):
@@ -105,12 +108,32 @@ class DoosanPickAndPlace(Node):
         self.goal = None
         self.state = self.IDLE
         self.sent = False
-<<<<<<< Updated upstream
-=======
         self.grip_fail_count = 0
         self.last_grip_attempt = 0.0
->>>>>>> Stashed changes
+        self.last_tcp = None
+        self.still_count = 0
         self.get_logger().info("System Reset. Waiting for NEW target.")
+
+    def is_still(self):
+        cur = self.tcp_xyz()
+        if cur is None:
+            self.still_count = 0
+            return False
+
+        if self.last_tcp is None:
+            self.last_tcp = cur
+            self.still_count = 0
+            return False
+
+        dx = max(abs(cur[0]-self.last_tcp[0]), abs(cur[1]-self.last_tcp[1]), abs(cur[2]-self.last_tcp[2]))
+        self.last_tcp = cur
+
+        if dx <= self.still_eps:
+            self.still_count += 1
+        else:
+            self.still_count = 0
+
+        return self.still_count >= self.still_need
 
     def step_loop(self):
         if self.goal is None:
@@ -125,25 +148,14 @@ class DoosanPickAndPlace(Node):
                 self.get_logger().info("STEP MOVE_ABOVE")
                 self.movel([tx, ty, tz, RX, RY, RZ], vel=self.v_fast, acc=self.a_fast)
                 self.sent = True
-            if self.reached(tx, ty, tz, tol=20.0):
+            if self.reached(tx, ty, tz, tol=20.0) and self.is_still():
                 self.state = self.GRIP_OPEN
                 self.sent = False
+                self.last_tcp = None
+                self.still_count = 0
 
         # 2. 그리퍼 벌리기
         elif self.state == self.GRIP_OPEN:
-<<<<<<< Updated upstream
-            if not self.sent:
-                self.get_logger().info("STEP GRIP_OPEN")
-                # DRL 내부: open -> wait(0.5) -> write -> wait(1.5) -> close
-                ok = self.gripper.move(GRIPPER_OPEN_VAL)
-                self.get_logger().info(f"GRIP_OPEN request sent: {ok}")
-                
-                time.sleep(2.5) # Python 대기
-                
-                self.sent = True
-                self.state = self.MOVE_DOWN
-                self.sent = False
-=======
             if time.time() - self.last_grip_attempt < self.grip_retry_delay:
                 return
             self.last_grip_attempt = time.time()
@@ -162,7 +174,6 @@ class DoosanPickAndPlace(Node):
             time.sleep(2.5) # Python 대기
             self.state = self.MOVE_DOWN
             self.sent = False
->>>>>>> Stashed changes
 
         # 3. 내려가기
         elif self.state == self.MOVE_DOWN:
@@ -171,24 +182,14 @@ class DoosanPickAndPlace(Node):
                 self.get_logger().info("STEP MOVE_DOWN")
                 self.movel([tx, ty, tz, RX, RY, RZ], vel=self.v_slow, acc=self.a_slow)
                 self.sent = True
-            if self.reached(tx, ty, tz, tol=10.0):
+            if self.reached(tx, ty, tz, tol=10.0) and self.is_still():
                 self.state = self.GRIP_CLOSE
                 self.sent = False
+                self.last_tcp = None
+                self.still_count = 0
 
         # 4. 그리퍼 닫기
         elif self.state == self.GRIP_CLOSE:
-<<<<<<< Updated upstream
-            if not self.sent:
-                self.get_logger().info("STEP GRIP_CLOSE")
-                # DRL 내부: open -> wait(0.5) -> write -> wait(1.5) -> close
-                ok = self.gripper.move(GRIPPER_CLOSE_VAL)
-                self.get_logger().info(f"GRIP_CLOSE request sent: {ok}")
-
-                time.sleep(2.5) # Python 대기
-
-                self.state = self.MOVE_UP
-                self.sent = False
-=======
             if time.time() - self.last_grip_attempt < self.grip_retry_delay:
                 return
             self.last_grip_attempt = time.time()
@@ -207,7 +208,6 @@ class DoosanPickAndPlace(Node):
             time.sleep(2.5) # Python 대기
             self.state = self.MOVE_UP
             self.sent = False
->>>>>>> Stashed changes
 
         # 5. 들어올리기
         elif self.state == self.MOVE_UP:
@@ -216,9 +216,11 @@ class DoosanPickAndPlace(Node):
                 self.get_logger().info("STEP MOVE_UP")
                 self.movel([tx, ty, tz, RX, RY, RZ], vel=self.v_fast, acc=self.a_fast)
                 self.sent = True
-            if self.reached(tx, ty, tz, tol=20.0):
+            if self.reached(tx, ty, tz, tol=20.0) and self.is_still():
                 self.state = self.GO_HOME
                 self.sent = False
+                self.last_tcp = None
+                self.still_count = 0
 
         # 6. 홈 복귀
         elif self.state == self.GO_HOME:
@@ -271,8 +273,4 @@ def main(args=None):
         rclpy.shutdown()
 
 if __name__ == "__main__":
-<<<<<<< Updated upstream
     main()
-=======
-    main()
->>>>>>> Stashed changes

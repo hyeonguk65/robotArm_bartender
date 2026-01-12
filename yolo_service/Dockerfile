@@ -7,10 +7,25 @@ SHELL ["/bin/bash", "-c"]
 # 2. 필수 시스템 도구 및 그래픽/통신 의존성 설치
 RUN apt-get update && apt-get install -y \
     python3-pip \
+    curl \
+    gnupg2 \
+    lsb-release \
     libgl1-mesa-glx \
     libglib2.0-0 \
     usbutils \
     ros-humble-rmw-fastrtps-cpp \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -sSf https://librealsense.intel.com/Debian/librealsense.pgp | tee /etc/apt/keyrings/librealsense.pgp > /dev/null \
+    && echo "deb [signed-by=/etc/apt/keyrings/librealsense.pgp] https://librealsense.intel.com/Debian/apt-repo $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/librealsense.list \
+    && apt-get update && apt-get install -y \
+        librealsense2-utils \
+        librealsense2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 20 및 Codex CLI 설치
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get update && apt-get install -y nodejs \
+    && npm install -g @openai/codex \
     && rm -rf /var/lib/apt/lists/*
 
 # 3. 파이썬 라이브러리 설치 (충돌 방지 최적화)
