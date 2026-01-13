@@ -31,12 +31,16 @@ class YoloRobotBaseVisualizer(Node):
 
         # 1) 통신 설정
         self.publisher_ = self.create_publisher(PointStamped, '/hand_target_point', 10)
-        self.command_sub = self.create_subscription(String, '/llm_command', self.command_callback, 10)
-
+        self.command_sub = self.create_subscription(
+            String, '/robot_order_ice_size', self.command_callback, 10
+        )
         # 2) 상태 변수
         self.target_label = None
         self.is_locked = False
         self.locked_xyz = None
+        self.locked_label = None
+        self.lock_publish_count = 0
+        self.lock_publish_max = 1
 
         # Lock 전에 좌표 모으기 버퍼 (테스트/평균)
         self.xyz_buffer = deque(maxlen=self.lock_window_frames)
@@ -76,24 +80,18 @@ class YoloRobotBaseVisualizer(Node):
         self.timer = self.create_timer(0.033, self.process_frame)  # ~30FPS
         self.get_logger().info("YOLO + ROI-median depth + lock-average node started.")
 
-    # LLM 명령 수신
+    # LLM(얼음 크기) 명령 수신
     def command_callback(self, msg: String):
         data = msg.data.strip().lower()
-        
-        if data == "reset" or data == "done":
-            # 모든 상태 초기화 -> 다시 실시간 탐색(박스 보이는 화면)으로 복귀
-            self.target_label = None
-            self.is_locked = False
-            self.locked_xyz = None
-            self.xyz_buffer.clear()
-            self.get_logger().info("Task Complete. Resetting to Search Mode...")
-        else:
-            # 새로운 목표물 설정 (기존과 동일)
-            self.target_label = data
-            self.is_locked = False
-            self.locked_xyz = None
-            self.xyz_buffer.clear()
-            self.get_logger().info(f"New Command Received: {self.target_label}")
+        if not data:
+            return
+        self.target_label = data
+        self.is_locked = False
+        self.locked_xyz = None
+        self.locked_label = None
+        self.lock_publish_count = 0
+        self.xyz_buffer.clear()
+        self.get_logger().info(f"New Command Received: {self.target_label}")
 
     # ROI median depth
     def get_roi_median_depth(self, depth_frame, u: int, v: int, w: int, h: int):
@@ -147,13 +145,22 @@ class YoloRobotBaseVisualizer(Node):
 
         # 1) lock 상태면: 화면은 계속 갱신 + locked_xyz만 publish
         if self.is_locked and self.locked_xyz is not None:
-            self.publish_point(self.locked_xyz)
-            cv2.putText(display_img, f"LOCKED: {self.target_label}", (10, 30),
+            if self.lock_publish_count < self.lock_publish_max:
+                self.publish_point(self.locked_xyz)
+                self.lock_publish_count += 1
+            cv2.putText(display_img, f"LOCKED: {self.locked_label}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2)
             # locked xyz도 화면에 표시
             lx, ly, lz = self.locked_xyz
             cv2.putText(display_img, f"XYZ(mm): {lx*1000:.1f}, {ly*1000:.1f}, {lz*1000:.1f}",
                         (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            if self.lock_publish_count == self.lock_publish_max:
+                self.get_logger().info("Lock publish limit reached (1). Resetting.")
+                self.target_label = None
+                self.is_locked = False
+                self.locked_xyz = None
+                self.locked_label = None
+                self.xyz_buffer.clear()
 
             cv2.imshow("Robot-Centric Detection", display_img)
             if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -259,6 +266,8 @@ class YoloRobotBaseVisualizer(Node):
 
             self.locked_xyz = mean_xyz
             self.is_locked = True
+            self.locked_label = label_name
+            self.lock_publish_count = 0
 
             self.get_logger().info(
                 f"[LOCK] {label_name} locked with mean(mm)=({mean_xyz[0]*1000:.1f}, {mean_xyz[1]*1000:.1f}, {mean_xyz[2]*1000:.1f}) "
@@ -310,8 +319,4 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-
-
-
-# ros2 topic pub --once /llm_command std_msgs/msg/String "{data: 'reset'}"
 

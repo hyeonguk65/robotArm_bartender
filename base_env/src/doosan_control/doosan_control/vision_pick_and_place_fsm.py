@@ -1,4 +1,3 @@
-import json
 import sys
 import rclpy
 import time
@@ -27,12 +26,13 @@ class DoosanPickAndPlace(Node):
         self.dsr = dsr
         self.dsr_node_obj = dsr_node_obj 
 
-        from DSR_ROBOT2 import movel, movej, posj, get_current_posx, set_robot_mode, ROBOT_MODE_AUTONOMOUS
-        self.movel = movel
-        self.movej = movej
-        self.posj = posj
-        self.get_current_posx = get_current_posx
-        set_robot_mode(ROBOT_MODE_AUTONOMOUS)
+        # Use the already-initialized DSR_ROBOT2 module passed from main()
+        # so that /dsr01 prefixes are applied correctly.
+        self.movel = dsr.movel
+        self.movej = dsr.movej
+        self.posj = dsr.posj
+        self.get_current_posx = dsr.get_current_posx
+        dsr.set_robot_mode(dsr.ROBOT_MODE_AUTONOMOUS)
 
         self.get_logger().info("✅ Robot Connected Successfully!")
 
@@ -45,7 +45,6 @@ class DoosanPickAndPlace(Node):
         self.deadband = 5.0
         self.state = self.IDLE
         self.sent = False
-        self.order_active = False
         self.cocktail = None
         self.ice_size = None
 
@@ -64,8 +63,6 @@ class DoosanPickAndPlace(Node):
         self.still_need = 25
 
         self.sub_coord = self.create_subscription(PointStamped, "/hand_target_point", self.target_cb, 10)
-        self.pub_resume = self.create_publisher(String, "/llm_command", 10)
-        self.sub_order = self.create_subscription(String, "/robot_order", self.order_cb, 10)
 
         self.timer = self.create_timer(0.02, self.step_loop)
 
@@ -76,7 +73,7 @@ class DoosanPickAndPlace(Node):
         self.get_logger().info("[OK] FSM Ready. Waiting for target...")
 
     def target_cb(self, msg: PointStamped):
-        if self.state != self.IDLE or not self.order_active:
+        if self.state != self.IDLE:
             return
 
         x = msg.point.x * 1000.0
@@ -94,38 +91,6 @@ class DoosanPickAndPlace(Node):
         self.last_tcp = None
         self.still_count = 0
         self.get_logger().info(f"🎯 goal set: ({x:.1f}, {y:.1f}, {z:.1f})")
-
-    def order_cb(self, msg: String):
-        if self.order_active or self.state != self.IDLE:
-            self.get_logger().warn("Order received while busy; ignoring.")
-            return
-
-        try:
-            data = json.loads(msg.data)
-        except Exception as exc:
-            self.get_logger().error(f"Invalid order payload: {exc}")
-            return
-
-        cocktail = data.get("cocktail")
-        ice_size = data.get("ice_size", "medium")
-        if not cocktail:
-            self.get_logger().warn("Order missing cocktail; ignoring.")
-            return
-
-        ice_size = str(ice_size).strip().lower()
-        if ice_size not in {"small", "medium", "large"}:
-            self.get_logger().warn(f"Unknown ice_size '{ice_size}', defaulting to medium.")
-            ice_size = "medium"
-
-        self.cocktail = cocktail
-        self.ice_size = ice_size
-        self.order_active = True
-
-        # YOLO에게 목표 라벨 전달
-        cmd = String()
-        cmd.data = ice_size
-        self.pub_resume.publish(cmd)
-        self.get_logger().info(f"📨 Order received: {cocktail} (ice={ice_size})")
 
     def tcp_xyz(self):
         try:
@@ -145,7 +110,6 @@ class DoosanPickAndPlace(Node):
         self.goal = None
         self.state = self.IDLE
         self.sent = False
-        self.order_active = False
         self.cocktail = None
         self.ice_size = None
         self.grip_fail_count = 0
@@ -292,6 +256,9 @@ def main(args=None):
     DR_init.__dsr__topic_name_prefix = f"/{ROBOT_ID}/"
     sys.modules["DR_init"] = DR_init
 
+    # Ensure DSR_ROBOT2 picks up the prefixes set above.
+    if "DSR_ROBOT2" in sys.modules:
+        del sys.modules["DSR_ROBOT2"]
     import DSR_ROBOT2 as dsr
     
     node = DoosanPickAndPlace(dsr, dsr_node)

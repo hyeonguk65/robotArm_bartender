@@ -26,6 +26,7 @@ setup(
     'console_scripts': [
         'vision_target_follower = doosan_control.vision_target_lock_follower:main',
         'vision_pick_fsm = doosan_control.vision_pick_and_place_fsm:main',
+        'vision_pick_simple = doosan_control.vision_pick_simple:main',
     ],
 },
 
