@@ -45,7 +45,8 @@ class CocktailBrain(Node):
         super().__init__("cocktail_brain_node")
 
         # 1. 로봇 팔 명령 (입)
-        self.publisher_ = self.create_publisher(String, "/robot_order", 10)
+        self.pub_cocktail = self.create_publisher(String, "/robot_order_cocktail", 10)
+        self.pub_ice = self.create_publisher(String, "/robot_order_ice_size", 10)
 
         # 2. 로봇 상태 수신 (귀)
         self.status_sub = self.create_subscription(
@@ -122,10 +123,13 @@ class CocktailBrain(Node):
         if not ice_size:
             ice_size = "medium"
 
-        msg = String()
-        # 로봇이 이해하기 쉬운 단순 JSON으로 변환
-        msg.data = json.dumps({"cocktail": cocktail_name, "ice_size": ice_size})
-        self.publisher_.publish(msg)
+        msg_cocktail = String()
+        msg_cocktail.data = str(cocktail_name)
+        self.pub_cocktail.publish(msg_cocktail)
+
+        msg_ice = String()
+        msg_ice.data = str(ice_size)
+        self.pub_ice.publish(msg_ice)
 
         self.get_logger().info(
             f">> 🦾 로봇에게 확정 명령 전송: {cocktail_name} (ice={ice_size})"
