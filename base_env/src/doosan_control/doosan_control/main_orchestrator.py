@@ -37,6 +37,7 @@ class Orchestrator(Node):
 
         try:
             self.tasks.pick_target((x, y, z))
+            self.tasks.process_cocktail_action()
         except Exception as exc:
             self.get_logger().error(f"Action failed: {exc}")
         finally:

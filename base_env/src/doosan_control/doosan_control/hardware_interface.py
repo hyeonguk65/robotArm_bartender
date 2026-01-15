@@ -17,6 +17,9 @@ class GripperController:
     def close(self) -> bool:
         return self.drl.move(config.GRIPPER_CLOSE_VAL)
 
+    def move(self, value: int) -> bool:
+        return self.drl.move(value)
+
     def shutdown(self) -> None:
         self.drl.shutdown()
 
@@ -33,6 +36,9 @@ class RobotController:
 
     def move_to_xyz(self, x, y, z, vel=config.VEL_FAST, acc=config.ACC_FAST) -> None:
         self.movel([x, y, z, config.RX, config.RY, config.RZ], vel=vel, acc=acc)
+
+    def move_to_pos(self, pos_list, vel=config.VEL_FAST, acc=config.ACC_FAST) -> None:
+        self.movel(pos_list, vel=vel, acc=acc)
 
     def go_home(self) -> None:
         self.movej(self.posj(*config.HOME_JOINTS), vel=config.VEL_FAST, acc=config.ACC_FAST)
