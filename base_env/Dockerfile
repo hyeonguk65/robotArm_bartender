@@ -41,5 +41,15 @@ RUN if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then rosdep init
     colcon build --symlink-install && \
     rm -rf /var/lib/apt/lists/*
 
+# 7. apt 패키지 설치 (pip 포함)
+# 리눅스 패키지 목록 업데이트 후 pip 설치 -> 캐시 삭제(용량 최적화)
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# 8. 파이썬 라이브러리 설치
+# pyserial 뿐만 아니라 아까 코드에 있던 dynamixel_sdk도 같이 설치해두면 좋습니다!
+RUN pip3 install pyserial dynamixel-sdk
+
 # 시작 위치 고정
 WORKDIR /root/robotArm_ws

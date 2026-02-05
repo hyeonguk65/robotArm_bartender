@@ -5,6 +5,10 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 
+import cv2  # 이미지 저장용
+from sensor_msgs.msg import Image  # 메시지 타입
+from cv_bridge import CvBridge  # 변환기
+
 # 패키지 임포트 예외처리
 try:
     from . import gemini_handler
@@ -52,6 +56,12 @@ class CocktailBrain(Node):
         self.status_sub = self.create_subscription(
             String, "/robot_status", self.robot_status_callback, 10
         )
+        # [추가] 시각 신경 연결 (YOLO가 보내주는 이미지 구독)
+        self.bridge = CvBridge()
+        self.latest_image = None  # 가장 최신 장면을 기억할 변수
+        self.sub_img = self.create_subscription(
+            Image, "/camera/color/image_raw", self.img_callback, 10
+        )
 
         self.get_logger().info("🍸 칵테일 바텐더 뇌(Brain) 가동 - 빠른 응답 모드")
 
@@ -60,6 +70,18 @@ class CocktailBrain(Node):
         self.waiting_for_robot = False
 
         self.timer = self.create_timer(1.0, self.listen_and_think)
+
+    # [추가] 이미지가 들어올 때마다 최신 장면으로 업데이트
+    def img_callback(self, msg):
+        self.latest_image = msg
+
+    def capture_snapshot(self, filename="snapshot.jpg"):
+        """현재 로봇의 시야를 파일로 저장"""
+        if self.latest_image is None:
+            return False
+        cv_img = self.bridge.imgmsg_to_cv2(self.latest_image, "bgr8")
+        cv2.imwrite(filename, cv_img)
+        return True
 
     def robot_status_callback(self, msg):
         """로봇이 'DONE' 신호를 보내면 실행."""
@@ -84,11 +106,38 @@ class CocktailBrain(Node):
 
         self.get_logger().info(f'🙋 손님: "{user_text}"')
 
-        # --- [Step 2] 생각하기 (Context 주입 로직 삭제됨) ---
-        full_query = f"{BARTENDER_PROMPT}\n손님: {user_text}"  # noqa: E501
+        # --- [Step 2] 생각하기 (Context ---
+        # [수정] 텍스트에 '추천'이나 '뭐' 같은 단어가 있는지 확인
+        full_query = f"{BARTENDER_PROMPT}\n손님: {user_text}"
+        ai_response = ""
 
-        # 제미나이에게 질문
-        ai_response = gemini_handler.ask_gemini(full_query)
+        # [수정] 키워드 대폭 추가 (오인식 대비)
+        # 컵퇴, 칵테, 추천, 춰, 줘, 뭐, 어울리는 등등
+        keywords = ["추천", "뭐", "어울", "컵퇴", "칵테", "주세요"]
+
+        # 위 키워드 중 하나라도 포함되면 Vision AI 발동
+        if any(word in user_text for word in keywords):
+            # 이미지가 있다면 저장하고 멀티모달 질문
+            if self.latest_image is not None:
+                cv_img = self.bridge.imgmsg_to_cv2(self.latest_image, "bgr8")
+                cv2.imwrite("snapshot.jpg", cv_img)  # 현재 화면 찰칵!
+
+                # 프롬프트 약간 변경 (사진을 참고하라고 지시)
+                vision_prompt = (
+                    full_query
+                    + "\n(참고: 첨부된 손님 사진을 보고 분위기에 맞춰 추천해줘)"
+                )
+                self.get_logger().info("📸 사진을 보고 고민 중...")
+                ai_response = gemini_handler.ask_gemini_vision(
+                    vision_prompt, "snapshot.jpg"
+                )
+            else:
+                # 사진이 없으면 그냥 텍스트로 질문
+                ai_response = gemini_handler.ask_gemini(full_query)
+        else:
+            # 일반 대화는 기존 방식대로
+            ai_response = gemini_handler.ask_gemini(full_query)
+
         clean_json = ai_response.replace("```json", "").replace("```", "").strip()
         self.get_logger().info(f"🤖 생각: {clean_json}")
 

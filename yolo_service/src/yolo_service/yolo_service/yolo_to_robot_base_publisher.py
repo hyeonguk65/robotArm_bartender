@@ -12,10 +12,13 @@ import numpy as np
 import pyrealsense2 as rs
 from ultralytics import YOLO
 
+from sensor_msgs.msg import Image  # 이미지를 통신으로 보내기 위한 편지봉투
+from cv_bridge import CvBridge  # OpenCV 이미지를 ROS 메시지로 변환하는 번역기
+
 
 class YoloRobotBaseVisualizer(Node):
     def __init__(self):
-        super().__init__('yolo_robot_base_visualizer')
+        super().__init__("yolo_robot_base_visualizer")
 
         # 0) 설정값 (필요시 조절)
         self.conf_th = 0.5
@@ -27,12 +30,15 @@ class YoloRobotBaseVisualizer(Node):
 
         # Lock 전에 평균낼 프레임 수 (30FPS 기준)
         self.lock_window_frames = 10  # 약 0.33초
-        self.log_interval_sec = 0.5   # 로그 출력 주기
+        self.log_interval_sec = 0.5  # 로그 출력 주기
 
         # 1) 통신 설정
-        self.publisher_ = self.create_publisher(PointStamped, '/hand_target_point', 10)
+        self.publisher_ = self.create_publisher(PointStamped, "/hand_target_point", 10)
+        # [추가] 이미지 원본을 다른 노드들에게 방송할 퍼블리셔 생성
+        self.img_pub = self.create_publisher(Image, "/camera/color/image_raw", 10)
+        self.cv_bridge = CvBridge()
         self.command_sub = self.create_subscription(
-            String, '/robot_order_ice_size', self.command_callback, 10
+            String, "/robot_order_ice_size", self.command_callback, 10
         )
         # 2) 상태 변수
         self.target_label = None
@@ -47,7 +53,9 @@ class YoloRobotBaseVisualizer(Node):
         self.last_log_time = time.time()
 
         # 3) YOLO + RealSense
-        self.model = YOLO("/root/robotArm_ws/src/user_pkgs/yolo_service/yolo_service/best.pt")
+        self.model = YOLO(
+            "/root/robotArm_ws/src/user_pkgs/yolo_service/yolo_service/best.pt"
+        )
 
         self.pipeline = rs.pipeline()
         config = rs.config()
@@ -57,7 +65,11 @@ class YoloRobotBaseVisualizer(Node):
         self.align = rs.align(rs.stream.color)
         profile = self.pipeline.start(config)
 
-        self.intr = profile.get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
+        self.intr = (
+            profile.get_stream(rs.stream.color)
+            .as_video_stream_profile()
+            .get_intrinsics()
+        )
 
         # 컬러 자동 노출 끄고 고정
         try:
@@ -69,12 +81,15 @@ class YoloRobotBaseVisualizer(Node):
             self.get_logger().warn(f"Exposure option not applied: {e}")
 
         # 사용자 제공 변환행렬
-        self.T_base_cam = np.array([
-            [ 0.013,  0.848, -0.53,   0.844],
-            [ 1.0,   -0.014,  0.002,  0.055],
-            [-0.005, -0.53,  -0.848,  1.08 ],
-            [ 0.0,    0.0,    0.0,    1.0  ]
-        ], dtype=np.float64)
+        self.T_base_cam = np.array(
+            [
+                [-0.017, 0.885, -0.465, 0.848],
+                [0.999, 0.002, -0.032, 0.064],
+                [-0.027, -0.466, -0.885, 1.06],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            dtype=np.float64,
+        )
 
         self.is_running = True
         self.timer = self.create_timer(0.033, self.process_frame)  # ~30FPS
@@ -124,7 +139,11 @@ class YoloRobotBaseVisualizer(Node):
         msg = PointStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = "base_link"
-        msg.point.x, msg.point.y, msg.point.z = float(xyz[0]), float(xyz[1]), float(xyz[2])
+        msg.point.x, msg.point.y, msg.point.z = (
+            float(xyz[0]),
+            float(xyz[1]),
+            float(xyz[2]),
+        )
         self.publisher_.publish(msg)
 
     # 메인 루프
@@ -143,17 +162,39 @@ class YoloRobotBaseVisualizer(Node):
         h, w = color_image.shape[:2]
         display_img = color_image.copy()
 
+        # [추가] 방금 얻은 따끈한 이미지를 방송(Publish)
+        if (
+            self.img_pub.get_subscription_count() > 0
+        ):  # 듣는 사람이 있을 때만 보내면 효율적
+            self.img_pub.publish(
+                self.cv_bridge.cv2_to_imgmsg(color_image, encoding="bgr8")
+            )
+
         # 1) lock 상태면: 화면은 계속 갱신 + locked_xyz만 publish
         if self.is_locked and self.locked_xyz is not None:
             if self.lock_publish_count < self.lock_publish_max:
                 self.publish_point(self.locked_xyz)
                 self.lock_publish_count += 1
-            cv2.putText(display_img, f"LOCKED: {self.locked_label}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2)
+            cv2.putText(
+                display_img,
+                f"LOCKED: {self.locked_label}",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.0,
+                (0, 255, 255),
+                2,
+            )
             # locked xyz도 화면에 표시
             lx, ly, lz = self.locked_xyz
-            cv2.putText(display_img, f"XYZ(mm): {lx*1000:.1f}, {ly*1000:.1f}, {lz*1000:.1f}",
-                        (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            cv2.putText(
+                display_img,
+                f"XYZ(mm): {lx*1000:.1f}, {ly*1000:.1f}, {lz*1000:.1f}",
+                (10, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 255),
+                2,
+            )
             if self.lock_publish_count == self.lock_publish_max:
                 self.get_logger().info("Lock publish limit reached (1). Resetting.")
                 self.target_label = None
@@ -163,7 +204,7 @@ class YoloRobotBaseVisualizer(Node):
                 self.xyz_buffer.clear()
 
             cv2.imshow("Robot-Centric Detection", display_img)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 self.stop_node()
             return
 
@@ -173,12 +214,12 @@ class YoloRobotBaseVisualizer(Node):
             persist=True,
             conf=self.conf_th,
             device=self.device,
-            verbose=False
+            verbose=False,
         )
 
         if len(results) == 0:
             cv2.imshow("Robot-Centric Detection", display_img)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 self.stop_node()
             return
 
@@ -188,7 +229,7 @@ class YoloRobotBaseVisualizer(Node):
         # 타겟 라벨이 없으면 화면만 보여주고 끝
         if self.target_label is None or r.boxes is None:
             cv2.imshow("Robot-Centric Detection", display_img)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 self.stop_node()
             return
 
@@ -212,7 +253,7 @@ class YoloRobotBaseVisualizer(Node):
         if best is None:
             self.xyz_buffer.clear()
             cv2.imshow("Robot-Centric Detection", display_img)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 self.stop_node()
             return
 
@@ -228,7 +269,7 @@ class YoloRobotBaseVisualizer(Node):
                 self.last_log_time = now
 
             cv2.imshow("Robot-Centric Detection", display_img)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 self.stop_node()
             return
 
@@ -242,12 +283,22 @@ class YoloRobotBaseVisualizer(Node):
 
         # 화면에 현재 후보 좌표 표시
         cv2.circle(display_img, (u, v), 4, (0, 255, 255), -1)
-        cv2.putText(display_img, f"Target: {label_name} conf={conf:.2f}",
-                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+        cv2.putText(
+            display_img,
+            f"Target: {label_name} conf={conf:.2f}",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.9,
+            (255, 255, 255),
+            2,
+        )
 
         # 주기적으로 mean/std 로그
         now = time.time()
-        if now - self.last_log_time > self.log_interval_sec and len(self.xyz_buffer) >= 3:
+        if (
+            now - self.last_log_time > self.log_interval_sec
+            and len(self.xyz_buffer) >= 3
+        ):
             arr = np.array(self.xyz_buffer)
             mean_xyz = np.mean(arr, axis=0)
             std_xyz = np.std(arr, axis=0)
@@ -276,7 +327,7 @@ class YoloRobotBaseVisualizer(Node):
             )
 
         cv2.imshow("Robot-Centric Detection", display_img)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) & 0xFF == ord("q"):
             self.stop_node()
 
     # 종료
@@ -317,6 +368,5 @@ def main(args=None):
         node.destroy_node()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

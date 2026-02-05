@@ -3,6 +3,8 @@ import os
 
 import google.generativeai as genai
 
+import PIL.Image  # 이미지 파일을 다루기 위한 도구
+
 # 1. 설정 구역 (Gemini API)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
@@ -53,4 +55,35 @@ def ask_gemini(user_text: str) -> str:
                 "action_code": "error",
             },
             ensure_ascii=False,
+        )
+
+    # [추가] 이미지와 텍스트를 함께 처리하는 멀티모달 함수
+
+
+def ask_gemini_vision(user_text: str, image_path: str = None) -> str:
+    try:
+        inputs = [user_text]
+        if image_path:
+            # 이미지 경로를 받아 파일을 열어서 리스트에 추가
+            img = PIL.Image.open(image_path)
+            inputs.append(img)
+
+        # 텍스트+이미지 리스트를 한꺼번에 전달
+        response = model.generate_content(inputs)
+
+        if response.text:
+            return response.text.strip()
+        else:
+            return json.dumps(
+                {
+                    "reason": "이미지를 잘 못 봤어요.",
+                    "action_code": "error",
+                    "cocktail": None,
+                }
+            )
+
+    except Exception as e:
+        print(f"Vision Error: {e}")
+        return json.dumps(
+            {"reason": "잠시 눈이 침침해요.", "action_code": "error", "cocktail": None}
         )

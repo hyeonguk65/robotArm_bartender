@@ -36,9 +36,15 @@ class Orchestrator(Node):
         self.get_logger().info(f"Target received: ({x:.1f}, {y:.1f}, {z:.1f})")
 
         try:
+            # 1. 먼저 타겟을 집습니다 (기존 Vision Pick)
             self.tasks.pick_target((x, y, z))
+
+            # [추가] 2. 집은 상태에서 바로 칵테일 제조 시퀀스를 이어서 실행합니다
+            self.tasks.process_cocktail_action()
+
         except Exception as exc:
             self.get_logger().error(f"Action failed: {exc}")
+
         finally:
             self.get_logger().info("Done. Returning home.")
             self.robot.go_home()

@@ -19,6 +19,7 @@ services:
       - ./fastdds_shm_disable.xml:/root/fastdds_shm_disable.xml
       # [에뮬레이터 해결] 컨테이너 내부에서 가상 로봇 도커를 띄우기 위한 소켓 공유
       - /var/run/docker.sock:/var/run/docker.sock
+      - /dev:/dev
     devices:
       - /dev/bus/usb:/dev/bus/usb
     command: ["bash", "-lc", "sleep infinity"]

@@ -29,6 +29,8 @@ setup(
         'vision_pick_simple = doosan_control.vision_pick_simple:main',
         'main_orchestrator = doosan_control.main_orchestrator:main',
         'menu_store = doosan_control.menu_store:main',
+        'rh_p12_map_test = doosan_control.rh_p12_map_and_test:main',
+        'arduino_gripper_controller = doosan_control.linux_arduino_gripper_controller:main',
     ],
 },
 
