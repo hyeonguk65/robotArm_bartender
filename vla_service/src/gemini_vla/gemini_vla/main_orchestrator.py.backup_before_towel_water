@@ -1,0 +1,203 @@
+import time
+
+import rclpy
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.node import Node
+from geometry_msgs.msg import PointStamped
+from rclpy.qos import QoSProfile
+import numpy as np
+import cv2
+
+from .hardware_interface import RobotHardwareInterface
+
+
+class MainOrchestrator(Node):
+    def __init__(self):
+        super().__init__("robot_main_controller", namespace="dsr01")
+        self.cb_group = ReentrantCallbackGroup()
+        self.hw = RobotHardwareInterface(self, self.cb_group)
+
+        self.accept_after_time_tissue = 0.0
+        self.accept_after_time_water = 0.0
+        qos = QoSProfile(depth=1)
+        self.tissue_subscription = self.create_subscription(
+            PointStamped,
+            "/target_tissue_point",
+            self.tissue_callback,
+            qos,
+            callback_group=self.cb_group,
+        )
+        self.water_subscription = self.create_subscription(
+            PointStamped,
+            "/target_water_point",
+            self.water_callback,
+            qos,
+            callback_group=self.cb_group,
+        )
+
+        self.is_working = False
+        self.move_delay_sec = 1.0
+        self.grip_delay_sec = 1.5
+        self.have_tissue = False
+        self.done = False
+        self.fixed_water_point = None
+
+        self.wipe_line_stroke_mm = 50.0
+        self.wipe_circle_radius_mm = 40.0
+        self.wipe_repeats = 3
+
+        # Pixel -> robot (base XY) homography from 4-point calibration
+        pixel_points = np.array(
+            [
+                [233.0, 181.0],  # left-bottom
+                [212.0, 387.0],  # left-top
+                [435.0, 181.0],  # right-bottom
+                [436.0, 383.0],  # right-top
+            ],
+            dtype=np.float32,
+        )
+        robot_points = np.array(
+            [
+                [110.15, -232.24],  # left-bottom
+                [669.86, -171.42],  # left-top
+                [112.58, 307.34],  # right-bottom
+                [629.81, 214.01],  # right-top
+            ],
+            dtype=np.float32,
+        )
+        self.homography = cv2.getPerspectiveTransform(pixel_points, robot_points)
+        self.hw.acquire_control()
+
+    def tissue_callback(self, msg):
+        if self.done or self.have_tissue:
+            return
+        msg_time = float(msg.header.stamp.sec) + float(msg.header.stamp.nanosec) * 1e-9
+        if msg_time <= self.accept_after_time_tissue:
+            return
+        if self.is_working:
+            return
+        self.is_working = True
+
+        try:
+            tx, ty = self._pixel_to_robot(msg.point.x, msg.point.y)
+            if not self._pick_tissue(tx, ty):
+                return
+            self.have_tissue = True
+        finally:
+            self.accept_after_time_tissue = self.get_clock().now().nanoseconds / 1e9
+            self.is_working = False
+
+    def water_callback(self, msg):
+        if self.done or not self.have_tissue or self.fixed_water_point is not None:
+            return
+        msg_time = float(msg.header.stamp.sec) + float(msg.header.stamp.nanosec) * 1e-9
+        if msg_time <= self.accept_after_time_water:
+            return
+        if self.is_working:
+            return
+        self.is_working = True
+
+        try:
+            wx, wy = self._pixel_to_robot(msg.point.x, msg.point.y)
+            self.fixed_water_point = (wx, wy)
+            if not self._wipe_water(wx, wy):
+                return
+            self.done = True
+        finally:
+            self.accept_after_time_water = self.get_clock().now().nanoseconds / 1e9
+            self.is_working = False
+
+    def _pick_tissue(self, tx, ty):
+        if not self.hw.move_line([350.0, 0.0, 350.0, 0.0, 180.0, 0.0]):  # Home
+            self.get_logger().error("Home 이동 실패, 시퀀스 중단")
+            return False
+        time.sleep(self.move_delay_sec)
+        if not self.hw.set_gripper(False):  # Open before approach
+            self.get_logger().error("그리퍼 열기 실패, 시퀀스 중단")
+            return False
+        time.sleep(self.grip_delay_sec)
+        if not self.hw.move_line([tx, ty, 250.0, 0.0, 180.0, 0.0]):  # Target Top
+            self.get_logger().error("타겟 상부 이동 실패, 시퀀스 중단")
+            return False
+        time.sleep(self.move_delay_sec)
+        if not self.hw.move_line([tx, ty, 140.0, 0.0, 180.0, 0.0], vel=30.0):  # Down
+            self.get_logger().error("하강 이동 실패, 시퀀스 중단")
+            return False
+        time.sleep(self.move_delay_sec)
+        if not self.hw.set_gripper(True):  # Close after down
+            self.get_logger().error("그리퍼 닫기 실패, 시퀀스 중단")
+            return False
+        time.sleep(self.grip_delay_sec)
+        if not self.hw.move_line([tx, ty, 350.0, 0.0, 180.0, 0.0]):  # Up
+            self.get_logger().error("상승 이동 실패, 시퀀스 중단")
+            return False
+        time.sleep(self.move_delay_sec)
+        if not self.hw.move_line([350.0, 0.0, 350.0, 0.0, 180.0, 0.0]):  # Home
+            self.get_logger().error("복귀 이동 실패, 시퀀스 중단")
+            return False
+        time.sleep(self.move_delay_sec)
+        return True
+
+    def _wipe_water(self, wx, wy):
+        if not self.hw.move_line([wx, wy, 250.0, 0.0, 180.0, 0.0]):  # Water Top
+            self.get_logger().error("물 상부 이동 실패, 시퀀스 중단")
+            return False
+        time.sleep(self.move_delay_sec)
+        if not self.hw.move_line([wx, wy, 140.0, 0.0, 180.0, 0.0], vel=25.0):  # Down
+            self.get_logger().error("물 위치 하강 실패, 시퀀스 중단")
+            return False
+        time.sleep(self.move_delay_sec)
+
+        half_stroke = self.wipe_line_stroke_mm / 2.0
+        for _ in range(self.wipe_repeats):
+            if not self.hw.move_line([wx, wy - half_stroke, 140.0, 0.0, 180.0, 0.0], vel=40.0):
+                self.get_logger().error("직선 닦기 실패")
+                return False
+            if not self.hw.move_line([wx, wy + half_stroke, 140.0, 0.0, 180.0, 0.0], vel=40.0):
+                self.get_logger().error("직선 닦기 실패")
+                return False
+
+        angles = np.linspace(0.0, 2.0 * np.pi, num=16, endpoint=False)
+        for _ in range(self.wipe_repeats):
+            for ang in angles:
+                cx = wx + self.wipe_circle_radius_mm * np.cos(ang)
+                cy = wy + self.wipe_circle_radius_mm * np.sin(ang)
+                if not self.hw.move_line([cx, cy, 140.0, 0.0, 180.0, 0.0], vel=40.0):
+                    self.get_logger().error("원형 닦기 실패")
+                    return False
+
+        if not self.hw.move_line([wx, wy, 250.0, 0.0, 180.0, 0.0]):  # Up
+            self.get_logger().error("상승 이동 실패, 시퀀스 중단")
+            return False
+        time.sleep(self.move_delay_sec)
+        if not self.hw.move_line([350.0, 0.0, 350.0, 0.0, 180.0, 0.0]):  # Home
+            self.get_logger().error("복귀 이동 실패, 시퀀스 중단")
+            return False
+        time.sleep(self.move_delay_sec)
+        if not self.hw.set_gripper(False):  # Open at home
+            self.get_logger().error("그리퍼 열기 실패, 시퀀스 중단")
+            return False
+        time.sleep(self.grip_delay_sec)
+        return True
+
+    def _pixel_to_robot(self, px, py):
+        point = np.array([[px, py, 1.0]], dtype=np.float32).T
+        mapped = self.homography @ point
+        if mapped[2, 0] == 0:
+            return 0.0, 0.0
+        x = mapped[0, 0] / mapped[2, 0]
+        y = mapped[1, 0] / mapped[2, 0]
+        return float(x), float(y)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = MainOrchestrator()
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+    try:
+        executor.spin()
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
