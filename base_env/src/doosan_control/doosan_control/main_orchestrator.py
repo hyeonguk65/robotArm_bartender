@@ -3,6 +3,7 @@ import sys
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PointStamped
+from std_msgs.msg import Bool
 import DR_init
 
 from . import config
@@ -15,8 +16,11 @@ class Orchestrator(Node):
         super().__init__("robot_orchestrator")
         self.dsr_node = dsr_node
         self.robot = RobotController(self, dsr)
-        self.gripper = GripperController(self, dsr_node, namespace=config.ROBOT_ID)
+        self.gripper = GripperController(self, self.dsr_node, namespace=config.ROBOT_ID)
         self.tasks = ActionTasks(self, self.robot, self.gripper)
+
+        # [추가] 칵테일 제조 완료 신호 퍼블리셔
+        self.complete_pub = self.create_publisher(Bool, "/cocktail_sequence_complete", 10)
 
         self.busy = False
         self.sub_coord = self.create_subscription(
@@ -49,6 +53,12 @@ class Orchestrator(Node):
             self.get_logger().info("Done. Returning home.")
             self.robot.go_home()
             self.busy = False
+            
+            # [추가] 칵테일 시퀀스 완료 및 홈 복귀 완료 신호 전송
+            msg_complete = Bool()
+            msg_complete.data = True
+            self.complete_pub.publish(msg_complete)
+            self.get_logger().info("[SIGNAL] Cocktail sequence complete signal sent.")
 
 
 def main(args=None):

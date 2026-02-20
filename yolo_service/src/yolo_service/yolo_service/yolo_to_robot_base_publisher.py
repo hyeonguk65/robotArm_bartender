@@ -75,8 +75,8 @@ class YoloRobotBaseVisualizer(Node):
         try:
             rgb_sensor = profile.get_device().query_sensors()[1]
             rgb_sensor.set_option(rs.option.enable_auto_exposure, 0)
-            rgb_sensor.set_option(rs.option.exposure, 150)
-            self.get_logger().info("Camera Exposure Fixed to 150")
+            rgb_sensor.set_option(rs.option.exposure, 90)
+            self.get_logger().info("Camera Exposure Fixed to 90")
         except Exception as e:
             self.get_logger().warn(f"Exposure option not applied: {e}")
 

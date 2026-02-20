@@ -3,6 +3,7 @@ import socket
 from . import config
 
 
+
 def send_signal(ip: str, message: str, port: int = 5000, timeout: float = 3.0) -> None:
     try:
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -13,6 +14,7 @@ def send_signal(ip: str, message: str, port: int = 5000, timeout: float = 3.0) -
         print(f"[OK] '{message}' 신호 전송 완료 -> {ip}:{port}")
     except Exception as exc:
         print(f">>> '{message}' 신호 전송 실패: {exc}")
+
 
 
 def wait_for_ack(
@@ -43,6 +45,7 @@ def wait_for_ack(
         return False
     finally:
         server_sock.close()
+
 
 
 class ActionTasks:
@@ -198,7 +201,7 @@ class ActionTasks:
 
         # 1) 쉐이킹 위치 이동
         self.robot.move_to_pos(config.POS_SHAKE_READY)
-        self.robot.pause(0.5)
+        self.robot.pause(1.5)
 
         # 2) 쉐이킹 실행
         self.robot.shake(
@@ -207,16 +210,16 @@ class ActionTasks:
             repeat=config.SHAKE_REPEAT,
             atime=config.SHAKE_ATIME,
         )
-        
+
         self.node.get_logger().info(">>> Shaking in progress...")
-        
+
         # 3) 대기 시간 수정
         # 예상 소요 시간: (0.8초 * 7회) + (0.2초 * 2) = 약 6.0초
         # 1초의 여유를 두고 7.0초 대기
         self.robot.pause(7.0)
 
         self.node.get_logger().info(">>> Shaking Done.")
-        
+
         # 쉐이킹 직후 안정화 대기 (짧게 유지)
         self.robot.pause(1.0)
 
@@ -235,7 +238,7 @@ class ActionTasks:
         # 도착 신호 전송 (센서 동작 시작)
         send_signal(config.LINUX_ARRIVAL_IP, "arrived", config.LINUX_ARRIVAL_PORT)
 
-        # 다시 그리퍼2 착륙 좌표로 이동
+        # 다시 그리퍼2 상공 좌표로 이동
         self.robot.move_to_pos(config.POS_GRIPPER2_HOVER)
         self.robot.pause(0.5)
 
@@ -270,7 +273,7 @@ class ActionTasks:
         self.robot.pause(0.5)
 
         # 뚜껑 놓기
-        self.robot.move_to_pos(config.POS_LID_PICK)
+        self.robot.move_to_pos(config.POS_LID_DROP)
         self.robot.pause(0.5)
 
         # 2. 그리퍼 열기
