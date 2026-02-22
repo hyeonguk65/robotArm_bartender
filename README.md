@@ -1,6 +1,6 @@
 # Branch Update: Finish building a sequence
 > **Current Branch:** `feature/develop`
-> **Last Updated:** 2026.2.22
+> **Last Updated:** 2026.2.23
 
 # Tech Stack
 - ROS2 Humble / Python 3.10
@@ -50,3 +50,10 @@ docker exec -it yolo_container bash
 colcon build --symlink-install
 source install/local_setup.bash
 ros2 run yolo_service yolo_visualizer
+
+### VLA
+docker exec -it vla_container bash
+colcon build --symlink-install
+source install/local_setup.bash
+ros2 launch gemini_vla gemini_vla.launch.py
+```
