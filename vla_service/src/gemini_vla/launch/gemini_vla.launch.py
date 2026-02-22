@@ -14,19 +14,5 @@ def generate_launch_description():
                 name="gemini_vla_node",
                 output="screen",
             ),
-            Node(
-                package="gemini_vla",
-                executable="gripper_service_node",
-                name="gripper_service_node",
-                namespace="dsr01",
-                output="screen",
-            ),
-            Node(
-                package="gemini_vla",
-                executable="robot_control",
-                name="robot_main_controller",
-                namespace="dsr01",
-                output="screen",
-            ),
         ]
     )

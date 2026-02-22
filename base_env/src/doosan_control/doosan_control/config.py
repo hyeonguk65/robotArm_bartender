@@ -9,13 +9,18 @@ GRIPPER_CUP_CLOSE = 160  # 쉐이커 집기 값 (160)
 GRIPPER_TOP_CLOSE = 510  # 쉐이커 뚜껑 값 (510)
 GRIPPER_CUSTOMER_CLOSE = 180  # 손님 컵 값 (180)
 
-GRIPPER_WAIT_SEC = 2.5  # 동작 사이 안정화 대기 시간
+GRIPPER_WAIT_SEC = 1.3  # 동작 사이 안정화 대기 시간 (단축)
 
-# 속도/가속도 설정
-VEL_FAST = 100
-ACC_FAST = 100
-VEL_SLOW = 50
-ACC_SLOW = 50
+# 속도/가속도 설정 
+VEL_FAST = 200
+ACC_FAST = 200
+VEL_SLOW = 100
+ACC_SLOW = 100
+# Movel 전용 리니어 속도 [mm/s, deg/s]
+VEL_LINEAR_FAST = [300, 60]
+ACC_LINEAR_FAST = [300, 60]
+VEL_LINEAR_SLOW = [100, 30]
+ACC_LINEAR_SLOW = [100, 30]
 
 # [NEW] 바텐더 로봇 동작 좌표 (x, y, z, `a`, b, c)
 # --- [1] 얼음 드랍 ---
@@ -28,7 +33,9 @@ POS_GRIPPER2_LAND = [301.0, 347.0, 115.0, 88.61, -90.0, 90.0]
 
 # --- [3] 디스펜서 관련 ---
 POS_DISPENSER_READY = [550.0, 50.0, 225.0, 176.72, -90.0, 90.0]
-POS_DISPENSER_PUSH = [630.0, 50.0, 225.0, 176.72, -90.0, 90.0]
+POS_DISPENSER_PUSH = [630.0, 55.0, 225.0, 176.72, -90.0, 90.0]
+POS_DISPENSER_JINTONIC_PUSH = [630.0, -60.0, 225.0, 176.72, -90.0, 90.0]
+POS_DISPENSER_JACKDANIELS_PUSH = [630.0, 170.0, 225.0, 176.72, -90.0, 90.0]
 
 # --- [5] 뚜껑 (Lid) 관련 ---
 POS_LID_HOVER = [155.0, 265.0, 400.0, 0.0, -180.0, 0.0]
@@ -61,8 +68,7 @@ SHAKE_PERIOD = [0, 0, 1.2, 0, 1.2, 0]
 SHAKE_REPEAT = 7
 
 # Atime: 가속 시간
-# 0.8초로 연장하여 연속 동작 시 충격 방지
-SHAKE_ATIME = 0.8
+SHAKE_ATIME = 0.2
 
 # --- [8] 최종 컵 회수 및 서빙 ---
 POS_CUP_RECOVERY = [254.0, -50.0, 140.0, 88.53, -90.0, 90.0]

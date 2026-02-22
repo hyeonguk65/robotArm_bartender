@@ -3,7 +3,7 @@ import time
 from dynamixel_sdk import *
 
 # ================= 1. 설정 구간 (Linux 기준 수정) =================
-ARDUINO_PORT = "/dev/ttyACM0"  # 보통 아두이노는 ACM 번호를 가집니다.
+ARDUINO_PORT = "/dev/ttyACM1"  # 보통 아두이노는 ACM 번호를 가집니다.
 DXL_PORT = "/dev/ttyUSB0"  # U2D2는 보통 USB 번호를 가집니다.
 BAUDRATE = 57600
 DXL_ID = 1

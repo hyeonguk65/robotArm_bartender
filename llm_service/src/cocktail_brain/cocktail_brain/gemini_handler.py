@@ -15,7 +15,7 @@ genai.configure(api_key=GOOGLE_API_KEY)
 
 SYSTEM_INSTRUCTION = "너는 한국어로 친절하게 답하는 AI 비서야."
 
-MODEL_NAME = "gemini-2.0-flash-lite"
+MODEL_NAME = "gemini-2.5-flash"
 model = genai.GenerativeModel(
     model_name=MODEL_NAME, system_instruction=SYSTEM_INSTRUCTION
 )

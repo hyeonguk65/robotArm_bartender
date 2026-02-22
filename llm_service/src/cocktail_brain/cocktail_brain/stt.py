@@ -17,7 +17,7 @@ def speech_to_text(duration=5):
     print("🎤 말하세요...")
 
     audio = sd.rec(
-        int(duration * fs), samplerate=fs, channels=1, dtype="float32", device=device_id
+        int(duration * fs), samplerate=fs, channels=1, dtype="float32"
     )
     sd.wait()
 

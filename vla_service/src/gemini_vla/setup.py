@@ -29,8 +29,6 @@ setup(
         # ROS2 entry point names used by launch files.
         'console_scripts': [
             'vla_node = gemini_vla.vla_node:main',
-            'robot_control = gemini_vla.robot_control:main',
-            'gripper_service_node = gemini_vla.gripper_service_node:main',
         ],
     },
 )

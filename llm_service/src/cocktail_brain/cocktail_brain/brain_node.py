@@ -3,7 +3,7 @@ import time
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
 
 import cv2  # 이미지 저장용
 from sensor_msgs.msg import Image  # 메시지 타입
@@ -31,14 +31,18 @@ BARTENDER_PROMPT = """
    -> `action_code`="make_cocktail", `cocktail`="정확한 영어 메뉴명", `ice_size`="small|medium|large"
 2. **얼음 크기**: 주문일 때는 반드시 얼음 크기를 포함하세요.
    - 손님이 말하지 않으면 기본값은 `medium`입니다.
-3. **일상 대화**: 주문이 아니라면 친절하게 대답하세요.
+3. **물 청소 요청**: 손님이 "물 닦아줘", "테이블이 젖었어" 등 물을 닦아달라고 요청하면 청소를 지시하세요.
+   -> `action_code`="wipe_water", `cocktail`=null, `ice_size`=null
+4. **일상 대화**: 주문이나 부탁이 아니라면 친절하게 대답하세요.
    -> `action_code`="chat", `cocktail`=null, `ice_size`=null
 
-가능한 칵테일: [Gin Tonic, Jack & Coke]
+가능한 칵테일: [Gin Tonic, Jack & Coke, Mojito]
 
 [출력 예시]
 {"reason": "네, 시원한 진토닉 바로 만들어 드리겠습니다.",
  "cocktail": "Gin Tonic", "ice_size": "medium", "action_code": "make_cocktail"}
+{"reason": "네, 테이블의 물기를 바로 닦아드릴게요.",
+ "cocktail": null, "ice_size": null, "action_code": "wipe_water"}
 {"reason": "안녕하세요! 오늘 기분은 어떠신가요?",
  "cocktail": null, "ice_size": null, "action_code": "chat"}
 """
@@ -51,10 +55,18 @@ class CocktailBrain(Node):
         # 1. 로봇 팔 명령 (입)
         self.pub_cocktail = self.create_publisher(String, "/robot_order_cocktail", 10)
         self.pub_ice = self.create_publisher(String, "/robot_order_ice_size", 10)
+        # 물 닦기 명령 Pub/Sub
+        self.pub_wipe = self.create_publisher(Bool, "/wipe_water_command", 10)
+        self.sub_wipe_active = self.create_subscription(
+            Bool, "/wipe_sequence_active", self.wipe_active_callback, 10
+        )
 
         # 2. 로봇 상태 수신 (귀)
-        self.status_sub = self.create_subscription(
+        self.sub_robot_status = self.create_subscription(
             String, "/robot_status", self.robot_status_callback, 10
+        )
+        self.sub_cocktail_complete = self.create_subscription(
+            Bool, "/cocktail_sequence_complete", self.cocktail_complete_callback, 10
         )
         # [추가] 시각 신경 연결 (YOLO가 보내주는 이미지 구독)
         self.bridge = CvBridge()
@@ -83,12 +95,25 @@ class CocktailBrain(Node):
         cv2.imwrite(filename, cv_img)
         return True
 
+    def wipe_active_callback(self, msg):
+        """물 닦기 시퀀스 활성화/비활성화 상태 수신."""
+        if not msg.data:
+            # False가 들어오면 닦기 완료(또는 초기화)를 의미
+            if self.waiting_for_robot:
+                self.get_logger().info("💧 로봇: 물 닦기 시퀀스 완료")
+                tts.speak("물 닦기를 완료했습니다. 다음 주문이 있으시면 말씀해주세요.")
+                self.waiting_for_robot = False
+
     def robot_status_callback(self, msg):
-        """로봇이 'DONE' 신호를 보내면 실행."""
-        if msg.data == "DONE":
+        """기존 /robot_status 토픽 (참고용)"""
+        pass
+
+    def cocktail_complete_callback(self, msg):
+        """칵테일 제조 완료 신호 수신."""
+        if msg.data and self.waiting_for_robot:
             self.get_logger().info("🤖 로봇: 제조 완료")
             tts.speak(
-                "칵테일이 완성되었습니다. 맛있게 드세요. " "다음 주문 말씀해주세요."
+                "칵테일이 완성되었습니다. 맛있게 드세요. " "다음 주문이 있으시면 말씀해주세요."
             )
             self.waiting_for_robot = False
 
@@ -157,6 +182,9 @@ class CocktailBrain(Node):
             if action == "make_cocktail":
                 # 되묻기 없이 바로 로봇에게 명령 전송
                 self.send_order_to_robot(cocktail, ice_size)
+            elif action == "wipe_water":
+                # 물 닦기 명령 전송
+                self.send_wipe_command()
             else:
                 # chat 또는 에러 상황 등 -> 아무 행동 안 함 (TTS만 하고 끝)
                 pass
@@ -164,6 +192,15 @@ class CocktailBrain(Node):
         except Exception as e:
             self.get_logger().error(f"처리 오류: {e}")
             tts.speak("죄송해요, 오류가 났어요.")
+
+    def send_wipe_command(self):
+        """로봇에게 물 닦기 명령 전송."""
+        msg_wipe = Bool()
+        msg_wipe.data = True
+        self.pub_wipe.publish(msg_wipe)
+        self.get_logger().info(">> 💧 로봇에게 물 닦기 명령 전송 완료")
+        # 로봇 대기 모드 진입
+        self.waiting_for_robot = True
 
     def send_order_to_robot(self, cocktail_name, ice_size):
         """로봇에게 최종 명령 전송."""

@@ -6,8 +6,8 @@ def speak(text):
         # 1. 구글 번역기 목소리로 음성 파일 생성 (언어: 한국어)
         tts = gTTS(text=text, lang='ko')
         
-        # 2. 파일로 저장
-        filename = '/root/robotArm_ws/voice_temp.mp3'
+        # 2. 파일로 저장 (로컬 경로로 수정)
+        filename = '/tmp/voice_temp.mp3'
         tts.save(filename)
         
         # 3. 재생 (mpg123 플레이어 사용)

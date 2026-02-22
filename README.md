@@ -11,6 +11,7 @@
 ## Current Status
 **음성 인식(STT)** 80% 향상, **제조 공정 One sequence** 완성.
 음성을 통한 주문 -> 칵테일 쉐이킹 및 제조 -> 음료 전달
+LLM을 통해 VLA로 테이블에 흘려진 물이나 칵테일을 닦아달라고 하면 닦아주는 기능 추가
 
 ## 설치 및 실행 (Installation & Usage)
 ```bash

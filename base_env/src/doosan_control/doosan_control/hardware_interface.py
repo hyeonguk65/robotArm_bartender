@@ -40,12 +40,13 @@ class RobotController:
     def move_to_xyz(self, x, y, z, vel=config.VEL_FAST, acc=config.ACC_FAST) -> None:
         self.movel([x, y, z, config.RX, config.RY, config.RZ], vel=vel, acc=acc)
 
-    # [NEW] 6축 좌표(x,y,z,a,b,c)로 이동하는 함수 추가
-    def move_to_pos(self, pos_list, vel=config.VEL_FAST, acc=config.ACC_FAST) -> None:
+    # [NEW] 6축 좌표(x,y,z,a,b,c)로 이동하는 함수 추가 (wipe를 위한 radius 추가)
+    def move_to_pos(self, pos_list, vel=config.VEL_FAST, acc=config.ACC_FAST, radius=0.0) -> None:
         """
         pos_list: [x, y, z, rx, ry, rz] 형태의 리스트
+        radius: 블렌딩 반경 (연속된 모션을 부드럽게 이어갈 때 사용)
         """
-        self.movel(pos_list, vel=vel, acc=acc)
+        self.movel(pos_list, vel=vel, acc=acc, radius=radius)
 
     # [NEW] 쉐이킹 동작 함수 추가
     def shake(self, amp, period, repeat, atime, ref=None):
@@ -68,7 +69,7 @@ class RobotController:
 
     def go_home(self) -> None:
         self.movej(
-            self.posj(*config.HOME_JOINTS), vel=config.VEL_FAST, acc=config.ACC_FAST
+            self.posj(*config.HOME_JOINTS), vel=60, acc=60
         )
 
     def pause(self, sec: float) -> None:

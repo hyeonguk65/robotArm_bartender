@@ -38,7 +38,10 @@ class GeminiVLANode(Node):
             Bool, '/cocktail_sequence_complete', self.cocktail_complete_callback, 10
         )
         
-        genai.configure(api_key="AIzaSyDWlAnpKZGodTvl-AHf9Si9e0dVav8QTnQ")
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            self.get_logger().error("GOOGLE_API_KEY environment variable is not set!")
+        genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel('gemini-2.5-flash')
 
         self.bridge = CvBridge()
@@ -63,7 +66,7 @@ class GeminiVLANode(Node):
         self.last_water_avg = None
         self.reset_thresh_towel_px = 120.0
         self.reset_thresh_water_px = 80.0
-        self.vla_enabled = False  # [추가] 칵테일 완료 전까지 비활성
+        self.vla_enabled = False  # 칵테일 로봇 제조 완료 시점까지 대기
         self.sequence_active = False
         self.prev_sequence_active = False
         self.towel_locked = False
@@ -109,9 +112,9 @@ class GeminiVLANode(Node):
             self.get_logger().info(f"픽셀 클릭 좌표: ({x}, {y})")
 
     def cocktail_complete_callback(self, msg):
-        """Enable VLA perception when cocktail sequence is finished."""
-        if msg.data:
-            self.get_logger().info("칵테일 시퀀스 완료 신호 수신: VLA 탐색 활성화")
+        """칵테일 시퀀스 완료 신호 수신 시 VLA 활성화."""
+        if msg.data and not self.vla_enabled:
+            self.get_logger().info("칵테일 제조 완료: 물/수건 스캔 시작")
             self.vla_enabled = True
 
     def sequence_active_callback(self, msg):
@@ -121,8 +124,8 @@ class GeminiVLANode(Node):
             self.get_logger().info("시퀀스 시작 신호 수신: 좌표 전송 잠금 유지")
         if not self.sequence_active and self.prev_sequence_active:
             # Full sequence finished -> unlock for next cycle.
-            self.get_logger().info("시퀀스 종료 신호 수신: 다음 사이클 좌표 재탐색 허용")
-            self.vla_enabled = False  # [추가] 한 사이클 종료 후 다시 대기 모드
+            self.get_logger().info("시퀀스 종료 신호 수신: 다음 탐색 허용")
+            # [수정] self.vla_enabled = False 제거
             self.towel_locked = False
             self.water_locked = False
             self.towel_history.clear()
@@ -184,7 +187,6 @@ class GeminiVLANode(Node):
                     else:
                         water_xy = self._infer_water_with_mode(pil_img, roi_img)
                 else:
-                    # [추가] 대기 중 메시지 표시 (UI용)
                     cv2.putText(
                         img_np,
                         "Waiting for cocktail completion...",
