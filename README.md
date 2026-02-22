@@ -1,10 +1,10 @@
 # Branch Update: Finish building a sequence
 > **Current Branch:** `feature/develop`
-> **Last Updated:** 2026.2.5
+> **Last Updated:** 2026.2.22
 
 # Tech Stack
 - ROS2 Humble / Python 3.10
-- Google Gemini 2.0 Flash Lite (Reasoning)
+- Google Gemini 2.5 (Reasoning)
 - Doosan Robotics E0509 (Hardware)
 - Docker (Environment)
 
