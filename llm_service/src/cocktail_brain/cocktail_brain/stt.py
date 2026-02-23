@@ -1,51 +1,59 @@
-import sounddevice as sd
-import numpy as np
-import whisper
-import tempfile
-import scipy.io.wavfile as wav
+import speech_recognition as sr
 import signal
 import sys
+import ctypes
 
-model = whisper.load_model("small")
+# ALSA 레벨의 C 에러 메시지를 완벽하게 차단하기 위한 핸들러
+ERROR_HANDLER_FUNC = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p)
+def py_error_handler(filename, line, function, err, fmt):
+    pass
+c_error_handler = ERROR_HANDLER_FUNC(py_error_handler)
 
+try:
+    asound = ctypes.cdll.LoadLibrary('libasound.so.2')
+    asound.snd_lib_error_set_handler(c_error_handler)
+except OSError:
+    pass
 
 def speech_to_text(duration=5):
-    device_id = 13  # 마이크(Realtek Audio), MME
-    fs = 48000
-    channels = 2
+    recognizer = sr.Recognizer()
+    
+    # 기본 감도(에너지 임계값) 설정 (목소리가 작더라도 잡아내도록)
+    recognizer.energy_threshold = 300
+    recognizer.dynamic_energy_threshold = True
 
+    # 마이크 객체 생성
+    mic = sr.Microphone()
+        
     print("🎤 말하세요...")
+    
+    with mic as source:
+        # 노이즈 분석 시간 최소화 (0.5 -> 0.2초)
+        recognizer.adjust_for_ambient_noise(source, duration=0.2)
+        
+        try:
+            # timeout: 아무 말도 안할 때 기다리는 대기 시간 (5초)
+            # phrase_time_limit: 제한 없음 (말이 끝날 때까지 다 듣기)
+            audio = recognizer.listen(source, timeout=duration, phrase_time_limit=None)
+        except sr.WaitTimeoutError:
+            print("⚠️ 마이크 입력이 없습니다.")
+            return ""
 
-    audio = sd.rec(
-        int(duration * fs), samplerate=fs, channels=1, dtype="float32"
-    )
-    sd.wait()
-
-    max_volume = np.max(np.abs(audio))
-    print(f"🔊 max volume: {max_volume}")
-
-    if max_volume < 0.001:
-        print("⚠️ 마이크 입력이 거의 없습니다.")
+    try:
+        # 구글 웹 STT API 사용
+        text = recognizer.recognize_google(audio, language="ko-KR")
+        return text
+    except sr.UnknownValueError:
+        print("⚠️ 음성을 인식하지 못했습니다.")
+        return ""
+    except sr.RequestError as e:
+        print(f"⚠️ 구글 API 요청 에러: {e}")
         return ""
 
-    audio_mono = np.mean(audio, axis=1)
-
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        wav.write(f.name, fs, audio_mono)
-        result = model.transcribe(f.name, language="ko")
-
-    text = result["text"].strip()
-    print("📝 인식된 텍스트:", text)
-    return text
-
-
-# 종료 신호가 오면 실행될 함수 (유언장)
+# 종료 신호 처리
 def signal_handler(sig, frame):
-    print("강제 종료 신호 감지! 마이크를 내려놓습니다...")
-    # 여기에 sd.stop() 같은 마이크 정지 코드 추가
+    print("강제 종료 신호 감지! 마이크를 끕니다...")
     sys.exit(0)
 
-
-# 신호 등록 (Docker가 끄라고 할 때 signal_handler를 실행해라)
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)

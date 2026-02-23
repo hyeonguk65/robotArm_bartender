@@ -130,7 +130,7 @@ class ActionTasks:
 
         # 8. 디스펜서로 전진 (Push)
         self.robot.move_to_pos(config.POS_DISPENSER_PUSH)
-        self.robot.pause(1.0)
+        self.robot.pause(4.0)
         
         name_lower = menu_name.lower()
         if "gin" in name_lower or "jin" in name_lower or "진" in name_lower:
@@ -232,7 +232,7 @@ class ActionTasks:
         # 3) 대기 시간 수정
         # 예상 소요 시간: (0.8초 * 7회) + (0.2초 * 2) = 약 6.0초
         # 1초의 여유를 두고 7.0초 대기
-        self.robot.pause(7.0)
+        self.robot.pause(3.0)
 
         self.node.get_logger().info(">>> Shaking Done.")
 

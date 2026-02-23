@@ -81,7 +81,13 @@ class CocktailBrain(Node):
         # 로봇이 제조 중인가?
         self.waiting_for_robot = False
 
-        self.timer = self.create_timer(1.0, self.listen_and_think)
+        # 기존 타이머 기반 STT 호출 제거 (충돌 원인)
+        # self.timer = self.create_timer(1.0, self.listen_and_think)
+        
+        # 대신 백그라운드 스레드에서 무한히 듣고 생각하도록 변경
+        import threading
+        self.listen_thread = threading.Thread(target=self.continuous_listen_loop, daemon=True)
+        self.listen_thread.start()
 
     # [추가] 이미지가 들어올 때마다 최신 장면으로 업데이트
     def img_callback(self, msg):
@@ -117,12 +123,20 @@ class CocktailBrain(Node):
             )
             self.waiting_for_robot = False
 
+    def continuous_listen_loop(self):
+        """백그라운드 스레드에서 무한히 실행되며 STT를 호출하는 루프"""
+        while rclpy.ok():
+            if not self.waiting_for_robot:
+                self.listen_and_think()
+            time.sleep(0.1)
+
     def listen_and_think(self):
         # 1. 로봇이 일하는 중이면 듣지 않음
         if self.waiting_for_robot:
             return
 
         # --- [Step 1] 듣기 ---
+        # 이제 제한 시간 없이 끝까지 듣습니다.
         user_text = stt.speech_to_text(duration=5)
 
         # 잡음 처리 (너무 짧으면 무시)
@@ -164,7 +178,6 @@ class CocktailBrain(Node):
             ai_response = gemini_handler.ask_gemini(full_query)
 
         clean_json = ai_response.replace("```json", "").replace("```", "").strip()
-        self.get_logger().info(f"🤖 생각: {clean_json}")
 
         # --- [Step 3] 행동 결정 ---
         try:
@@ -175,7 +188,7 @@ class CocktailBrain(Node):
             action = data.get("action_code", "unknown")
 
             # 1. 안내 멘트 (TTS)
-            self.get_logger().info(f'🗣️ 로봇 말: "{reason}"')
+            self.get_logger().info(f'🗣️ 바텐더: "{reason}"')
             tts.speak(reason)
 
             # 2. 행동 처리
