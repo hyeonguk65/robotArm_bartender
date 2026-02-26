@@ -20,12 +20,12 @@ from collections import deque
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 logging.getLogger('google').setLevel(logging.ERROR)
 
-class GeminiVLANode(Node):
+class GeminiVLMNode(Node):
     """Capture camera frames, infer targets, and publish stable coordinates."""
 
     def __init__(self):
         """Initialize ROS I/O, Gemini model, camera stream, and tracking state."""
-        super().__init__('gemini_vla_node')
+        super().__init__('gemini_vlm_node')
         self.towel_pub = self.create_publisher(PointStamped, 'target_towel_point', 10)
         # Legacy topic is kept for compatibility with older orchestrator versions.
         self.tissue_pub = self.create_publisher(PointStamped, 'target_tissue_point', 10)
@@ -66,7 +66,7 @@ class GeminiVLANode(Node):
         self.last_water_avg = None
         self.reset_thresh_towel_px = 120.0
         self.reset_thresh_water_px = 80.0
-        self.vla_enabled = False  # 칵테일 로봇 제조 완료 시점까지 대기
+        self.vlm_enabled = False  # 칵테일 로봇 제조 완료 시점까지 대기
         self.sequence_active = False
         self.prev_sequence_active = False
         self.towel_locked = False
@@ -95,8 +95,8 @@ class GeminiVLANode(Node):
         self.start_mono = time.monotonic()
 
         self.get_logger().info('=== Gemini Node: Ready for Towel+Water Detection ===')
-        cv2.namedWindow("VLA View")
-        cv2.setMouseCallback("VLA View", self.on_mouse)
+        cv2.namedWindow("VLM View")
+        cv2.setMouseCallback("VLM View", self.on_mouse)
         self.timer = self.create_timer(0.50, self.timer_callback)
 
     def image_callback(self, msg):
@@ -112,10 +112,10 @@ class GeminiVLANode(Node):
             self.get_logger().info(f"픽셀 클릭 좌표: ({x}, {y})")
 
     def cocktail_complete_callback(self, msg):
-        """칵테일 시퀀스 완료 신호 수신 시 VLA 활성화."""
-        if msg.data and not self.vla_enabled:
+        """칵테일 시퀀스 완료 신호 수신 시 VLM 활성화."""
+        if msg.data and not self.vlm_enabled:
             self.get_logger().info("칵테일 제조 완료: 물/수건 스캔 시작")
-            self.vla_enabled = True
+            self.vlm_enabled = True
 
     def sequence_active_callback(self, msg):
         """Lock/unlock coordinate search according to robot sequence state."""
@@ -125,7 +125,7 @@ class GeminiVLANode(Node):
         if not self.sequence_active and self.prev_sequence_active:
             # Full sequence finished -> unlock for next cycle.
             self.get_logger().info("시퀀스 종료 신호 수신: 다음 탐색 허용")
-            # [수정] self.vla_enabled = False 제거
+            # [수정] self.vlm_enabled = False 제거
             self.towel_locked = False
             self.water_locked = False
             self.towel_history.clear()
@@ -168,13 +168,13 @@ class GeminiVLANode(Node):
                     1,
                     cv2.LINE_AA,
                 )
-                cv2.imshow("VLA View", img_np)
+                cv2.imshow("VLM View", img_np)
                 cv2.waitKey(1)
                 return
             
             towel_xy, water_xy = None, None
             if not self.sequence_active:
-                if self.vla_enabled:
+                if self.vlm_enabled:
                     if not self.towel_locked:
                         towel_xy, water_xy = self._infer_targets(pil_img)
                         if towel_xy:
@@ -249,7 +249,7 @@ class GeminiVLANode(Node):
                     (0, 255, 255),
                     -1,
                 )
-            cv2.imshow("VLA View", img_np)
+            cv2.imshow("VLM View", img_np)
             cv2.waitKey(1)
 
         except Exception as e:
@@ -834,9 +834,9 @@ class GeminiVLANode(Node):
         )
 
 def main(args=None):
-    """Entry point for Gemini VLA ROS2 node."""
+    """Entry point for Gemini VLM ROS2 node."""
     rclpy.init(args=args)
-    node = GeminiVLANode()
+    node = GeminiVLMNode()
     try: rclpy.spin(node)
     except KeyboardInterrupt: pass
     finally:

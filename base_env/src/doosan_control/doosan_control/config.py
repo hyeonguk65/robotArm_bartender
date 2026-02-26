@@ -5,9 +5,9 @@ RX, RY, RZ = 0.0, 180.0, 0.0
 # 그리퍼 값 설정
 GRIPPER_OPEN_VAL = 0
 GRIPPER_CLOSE_VAL = 700
-GRIPPER_CUP_CLOSE = 160  # 쉐이커 집기 값 (160)
+GRIPPER_CUP_CLOSE = 190  # 쉐이커 집기 값 (160)
 GRIPPER_TOP_CLOSE = 510  # 쉐이커 뚜껑 값 (510)
-GRIPPER_CUSTOMER_CLOSE = 180  # 손님 컵 값 (180)
+GRIPPER_CUSTOMER_CLOSE = 200  # 손님 컵 값 (180)
 
 GRIPPER_WAIT_SEC = 1.3  # 동작 사이 안정화 대기 시간 (단축)
 
@@ -33,9 +33,9 @@ POS_GRIPPER2_LAND = [301.0, 347.0, 115.0, 88.61, -90.0, 90.0]
 
 # --- [3] 디스펜서 관련 ---
 POS_DISPENSER_READY = [550.0, 50.0, 225.0, 176.72, -90.0, 90.0]
-POS_DISPENSER_PUSH = [630.0, 55.0, 225.0, 176.72, -90.0, 90.0]
-POS_DISPENSER_JINTONIC_PUSH = [630.0, -60.0, 225.0, 176.72, -90.0, 90.0]
-POS_DISPENSER_JACKDANIELS_PUSH = [630.0, 170.0, 225.0, 176.72, -90.0, 90.0]
+POS_DISPENSER_PUSH = [640.0, 55.0, 245.0, 176.72, -90.0, 90.0]
+POS_DISPENSER_JINTONIC_PUSH = [640.0, -60.0, 245.0, 176.72, -90.0, 90.0]
+POS_DISPENSER_JACKDANIELS_PUSH = [640.0, 170.0, 245.0, 176.72, -90.0, 90.0]
 
 # --- [5] 뚜껑 (Lid) 관련 ---
 POS_LID_HOVER = [155.0, 265.0, 400.0, 0.0, -180.0, 0.0]
@@ -55,17 +55,16 @@ POS_POUR_ACTION = [293.0, -160.0, 278.0, 65.0, 173.0, 116.0]
 POS_SHAKE_READY = [395.0, 65.0, 450.0, 0.0, -180.0, 0.0]
 
 # Amp (진폭): [x, y, z, rx, ry, rz]
-# Z(상하): 40mm로 줄여서 모터 부하 감소
-# Ry(손목): 8도로 줄여서 안정성 확보
+# 기계에 무리가 가지 않도록 진폭 재조정 (Z: 40, Ry: 12)
 SHAKE_AMP = [0, 0, 40, 0, 8, 0]
 
 # Period (주기): 한 번 움직이는 시간 (초)
-# 1.2초로 늘려 부드러운 왕복 보장
+# 너무 짧은 주기(0.6초)는 로봇 제어기의 가속도 한계에 걸릴 수 있으므로 0.8초로 타협
 SHAKE_PERIOD = [0, 0, 1.2, 0, 1.2, 0]
 
 # Repeat: 반복 횟수
-# 7초 대기 시간에 맞추기 위해 7회로 설정
-SHAKE_REPEAT = 7
+# 짧은 주기로 여러 번 흔들도록 10회로 설정 (총 6초 소요)
+SHAKE_REPEAT = 10
 
 # Atime: 가속 시간
 SHAKE_ATIME = 0.2

@@ -1,8 +1,8 @@
-"""Package metadata and console entry points for gemini_vla."""
+"""Package metadata and console entry points for gemini_vlm."""
 
 from setuptools import find_packages, setup
 
-package_name = 'gemini_vla'
+package_name = 'gemini_vlm'
 
 setup(
     name=package_name,
@@ -12,7 +12,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', ['launch/gemini_vla.launch.py']),
+        ('share/' + package_name + '/launch', ['launch/gemini_vlm.launch.py']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -28,7 +28,7 @@ setup(
     entry_points={
         # ROS2 entry point names used by launch files.
         'console_scripts': [
-            'vla_node = gemini_vla.vla_node:main',
+            'vlm_node = gemini_vlm.vlm_node:main',
         ],
     },
 )

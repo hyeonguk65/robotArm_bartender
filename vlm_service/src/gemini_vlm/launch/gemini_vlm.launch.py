@@ -1,4 +1,4 @@
-"""Launch all runtime nodes required by the Gemini VLA workflow."""
+"""Launch all runtime nodes required by the Gemini VLM workflow."""
 
 from launch import LaunchDescription
 from launch_ros.actions import Node
@@ -9,9 +9,9 @@ def generate_launch_description():
     return LaunchDescription(
         [
             Node(
-                package="gemini_vla",
-                executable="vla_node",
-                name="gemini_vla_node",
+                package="gemini_vlm",
+                executable="vlm_node",
+                name="gemini_vlm_node",
                 output="screen",
             ),
         ]

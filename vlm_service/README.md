@@ -1,6 +1,6 @@
-# gemini_vla_Doosan-robotic-arm 실행 및 과정 설명
+# gemini_vlm_Doosan-robotic-arm 실행 및 과정 설명
 
-colcon build --packages-select gemini_vla  
+colcon build --packages-select gemini_vlm  
 source install/setup.bash 
 
 ros2 launch dsr_bringup2 dsr_bringup2_rviz.launch.py mode:=real host:=110.120.1.38 port:=12345 model:=e0509
@@ -8,14 +8,14 @@ ros2 launch dsr_bringup2 dsr_bringup2_rviz.launch.py mode:=real host:=110.120.1.
 
 
 source install/setup.bash 
-ros2 launch gemini_vla gemini_vla.launch.py
+ros2 launch gemini_vlm gemini_vlm.launch.py
 --------------------------------------------------------------------------------------------------------------
 
-ros2 launch gemini_vla gemini_vla.launch.py 실행 시 아래 3개 노드가 동시에 시작됩니다.
+ros2 launch gemini_vlm gemini_vlm.launch.py 실행 시 아래 3개 노드가 동시에 시작됩니다.
 
-  1. gemini_vla_node (executable: vla_node)
+  1. gemini_vlm_node (executable: vlm_node)
 
-  - 역할: 카메라 프레임 기반 타겟 인식(VLA)
+  - 역할: 카메라 프레임 기반 타겟 인식(VLM)
   - 주요 발행 토픽:
       - target_towel_point (geometry_msgs/PointStamped)
       - target_water_point (geometry_msgs/PointStamped)
@@ -46,7 +46,7 @@ ros2 launch gemini_vla gemini_vla.launch.py 실행 시 아래 3개 노드가 동
 
   ## 시스템 동작 순서 (End-to-End)
 
-  1. vla_node가 이미지에서 수건/물 좌표를 추정하여 토픽으로 발행
+  1. vlm_node가 이미지에서 수건/물 좌표를 추정하여 토픽으로 발행
   2. robot_main_controller가 좌표를 수신하면 시퀀스 시작
   3. 시퀀스 중 /wipe_sequence_active=True를 발행하여 인식 좌표 업데이트를 잠금
   4. 로봇이 수건 집기 -> 물 닦기 -> 수건 원위치 작업 수행

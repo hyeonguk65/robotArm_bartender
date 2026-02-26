@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>gemini_vla</name>
+  <name>gemini_vlm</name>
   <version>1.1.0</version>
   <description>TODO: Package description</description>
   <maintainer email="rms50907932@gmail.com">rms</maintainer>

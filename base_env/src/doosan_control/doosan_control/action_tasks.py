@@ -230,8 +230,6 @@ class ActionTasks:
         self.node.get_logger().info(">>> Shaking in progress...")
 
         # 3) 대기 시간 수정
-        # 예상 소요 시간: (0.8초 * 7회) + (0.2초 * 2) = 약 6.0초
-        # 1초의 여유를 두고 7.0초 대기
         self.robot.pause(3.0)
 
         self.node.get_logger().info(">>> Shaking Done.")

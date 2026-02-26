@@ -23,7 +23,7 @@ class Orchestrator(Node):
         self.gripper = GripperController(self, self.dsr_node, namespace=config.ROBOT_ID)
         self.tasks = ActionTasks(self, self.robot, self.gripper)
 
-        # [추가] 칵테일 제조 완료 신호 퍼블리셔 (VLA 등에게 알림)
+        # [추가] 칵테일 제조 완료 신호 퍼블리셔 (VLM 등에게 알림)
         self.complete_pub = self.create_publisher(Bool, "/cocktail_sequence_complete", 10)
         # [추가] 물 닦기 중임을 알리는 퍼블리셔
         self.wipe_active_pub = self.create_publisher(Bool, "/wipe_sequence_active", 10)
@@ -53,7 +53,7 @@ class Orchestrator(Node):
         self.sub_coord = self.create_subscription(
             PointStamped, "/hand_target_point", self.cocktail_target_cb, 10
         )
-        # 물/수건 타겟 좌표 (VLA Node)
+        # 물/수건 타겟 좌표 (VLM Node)
         self.towel_sub = self.create_subscription(
             PointStamped, "/target_towel_point", self.towel_callback, 10
         )
